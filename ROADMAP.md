@@ -1,0 +1,112 @@
+# Roadmap
+
+Cambium is built in phases ([ADR-0001](docs/adr/0001-scope-and-phases.md)). Each phase ships something usable on its own and has exit criteria. Items are checked off in the pull request that completes them.
+
+## Phase 0: Foundations
+
+Decisions and scaffolding before any code.
+
+**Decisions**
+
+- [x] Scope, phases, and deployment models ([ADR-0001](docs/adr/0001-scope-and-phases.md))
+- [x] Git protocol at the edge, storage through pluggable backends ([ADR-0002](docs/adr/0002-git-compatible-edge.md))
+- [x] Licensing ([ADR-0003](docs/adr/0003-licensing.md))
+- [x] Agent-first interface principles ([ADR-0004](docs/adr/0004-agent-first-interfaces.md))
+- [x] Internationalization ([ADR-0005](docs/adr/0005-internationalization.md))
+- [ ] Spike: run Enroute locally and check its quickstart, gRPC API, hooks, and limitations against the Phase 1a needs below. Record the results in an ADR.
+- [ ] ADR: storage backend interface and its conformance test suite
+- [ ] ADR: how git traffic is authorized (Enroute's hooks or a Cambium proxy)
+- [ ] ADR: reclaiming storage from expired ephemeral branches on Enroute, which reclaims storage only when a repository is deleted
+- [ ] ADR: Cambium's metadata store (SQLite first, then Postgres)
+- [ ] ADR: tenancy and authentication model
+- [ ] ADR: API transport and error code registry
+
+**Scaffolding**
+
+- [ ] Cargo workspace, pinned toolchain (`rust-toolchain.toml`), crate layout
+- [ ] CI: `cargo fmt`, `cargo clippy`, `cargo test`
+- [ ] CI license policy (for example `cargo-deny`): every crate declares a license, no Apache-2.0 crate depends on an AGPL-3.0-only crate, and third-party dependencies pass the ADR-0003 allow-list
+- [ ] Path test corpus: non-UTF-8, NFC vs NFD, and case-colliding paths (ADR-0005)
+
+**Open-source readiness**
+
+- [x] Contribution policy: DCO 1.1, not a CLA ([ADR-0003](docs/adr/0003-licensing.md))
+- [x] `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `SECURITY.md`
+- [x] Issue templates, pull request template, `CODEOWNERS`
+- [x] DCO sign-off check in CI
+- [x] Turn on GitHub private vulnerability reporting (`SECURITY.md` depends on it)
+- [x] Turn on GitHub Discussions for workload reports and design questions
+- [x] Dated comparison with existing projects ([docs/comparison.md](docs/comparison.md))
+- [ ] Publish the Code of Conduct contact email (replace the placeholder)
+- [ ] Protect `main`: require pull requests and the DCO check
+- [ ] Require sign-off on commits made in the GitHub web interface
+- [ ] Open a labelled issue for each open Phase 0 item, with the question, constraints, and acceptance criteria
+- [ ] Choose the final product name and run trademark, crates.io, and domain checks before public launch
+
+**Exit criteria:** every open ADR above is accepted, the workspace builds in CI, the license policy check is enforced, and every open-source readiness item is done.
+
+## Phase 1a: A slice people can try
+
+The smallest Cambium that shows the agent layer working over Enroute.
+
+- [ ] Single Cambium binary plus Enroute, started together with one command (container compose file), with Enroute pinned to a version tag
+- [ ] Cambium implements Enroute's hooks (authentication, visibility, pre-receive, post-receive) and verifies that hook calls come from Enroute
+- [ ] SQLite metadata store
+- [ ] Tenants and scoped, short-lived tokens; tenant and identity fields (human or agent) in every record
+- [ ] API: create and delete repositories
+- [ ] API: write a changeset (paths and contents) without a checkout, with an idempotency key
+- [ ] API: read a file at a revision, list a tree, diff two revisions
+- [ ] Ephemeral branches with a TTL and cleanup, with storage reclaimed by the method chosen in the reclamation ADR
+- [ ] Stock git clone, fetch, and push through Enroute, authorized by Cambium, with a documented and tested minimum git version (Enroute requires Git 2.50 or later)
+- [ ] Structured errors with stable codes for every call above
+- [ ] MCP server exposing the same operations
+- [ ] Cross-tenant denial tests for the API, MCP, and git traffic, plus a check that Enroute's gRPC listener is not reachable from outside
+- [ ] Five-minute quickstart, plus an example script that drives an agent loop against Cambium
+
+**Exit criteria:**
+
+- Following only the quickstart, a new user can start Cambium, connect an agent through MCP, and have it create a repository, write and read changes, and clone them with stock git.
+- An expired ephemeral branch is cleaned up, and its storage is reclaimed by the method chosen in the reclamation ADR.
+- Requests without a valid token are rejected everywhere, including git traffic.
+- A valid token for one tenant cannot reach another tenant's repositories through the API, MCP, or git.
+
+## Phase 1b: Production basics
+
+- [ ] Postgres metadata store
+- [ ] Object storage configuration guide for Enroute (S3-compatible)
+- [ ] Full error code registry, published as part of the API contract
+- [ ] Provenance fields on changes (agent, model, session ID)
+- [ ] CLI as a thin client over the API, with `--json` output and a message catalog for human output (`en`)
+- [ ] Cross-tenant isolation tests extended to every endpoint, run in CI
+- [ ] Backend conformance test suite, run in CI
+- [ ] Tested procedure for moving repositories to another backend
+- [ ] Crash-recovery and durability tests, and a documented backup and restore procedure
+- [ ] Self-host packaging: release binaries and container images
+- [ ] Published benchmarks against Enroute alone, walgit, and a stock git server (ephemeral branch creation, write latency, clone time)
+
+**Exit criteria:** a single-tenant deployment can be self-hosted and backed up by following the docs alone, tenant isolation and conformance tests pass in CI, and the benchmarks are published.
+
+## Phase 2: History and scale
+
+- [ ] Derived-data index: values computed from parent commits, eager or deferred
+- [ ] Log, path history, and blame APIs built on the index
+- [ ] Search API, including CJK text
+- [ ] Repository event streams and webhooks
+- [ ] Second storage backend (walgit is the first candidate)
+- [ ] Decide, in an ADR, whether a Cambium-owned Scion-style storage engine is needed
+
+**Exit criteria:** history queries need no clone, and two backends pass the conformance suite.
+
+## Phase 3: Review and merge policy
+
+Policy for what lands, with humans and agents treated differently.
+
+- [ ] Enforce the human/agent identity distinction
+- [ ] Approvals bound to a specific commit and dismissed when new commits arrive
+- [ ] An agent's approval never satisfies a human-approval requirement
+- [ ] Directory-level permissions
+- [ ] Risk tiers determined by the change itself
+- [ ] Policy hooks that external review tools can report into
+- [ ] Merge gate driven by policy, without a global lock
+
+**Exit criteria:** a repository can require human approval on chosen paths, accept agent-only merges on low-risk changes, and prove which commit each approval covered.
