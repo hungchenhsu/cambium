@@ -57,7 +57,7 @@ met. The Code of Conduct contact and final product name below remain open.
 
 The smallest Cambium that shows the agent layer working over Enroute.
 
-- [ ] Single Cambium binary plus Enroute, started together with one command (container compose file), with Enroute pinned to a version tag
+- [x] Single Cambium binary plus Enroute, started together with one command (container compose file), with Enroute pinned to a version tag
 - [x] Cambium implements Enroute's hooks (authentication, visibility, pre-receive, post-receive) and verifies that hook calls come from Enroute
 - [x] SQLite metadata store, including branch lifecycle and compaction recovery
 - [x] Tenants and scoped, short-lived tokens; tenant and identity fields (human or agent) in every record ([store tests](crates/cambium-store/tests/authorization.rs); transport isolation remains below)
@@ -68,8 +68,8 @@ The smallest Cambium that shows the agent layer working over Enroute.
 - [x] Stock git clone, fetch, and push through Enroute, authorized by Cambium, with a documented and tested minimum git version (Enroute requires Git 2.50 or later)
 - [x] Structured errors with stable codes for every call above
 - [x] MCP server exposing the same operations ([transport and SDK checks](docs/local-development.md#verify-the-transport-and-mcp-client))
-- [ ] Cross-tenant denial tests for the API, MCP, and git traffic, plus a check that Enroute's gRPC listener is not reachable from outside
-- [ ] Five-minute quickstart, plus an example script that drives an agent loop against Cambium
+- [x] Cross-tenant denial tests for the API, MCP, and git traffic, plus a check that Enroute's gRPC listener is not reachable from outside ([compose verification](scripts/verify_compose.py))
+- [x] Five-minute quickstart after the initial local image build, plus an example script that drives an agent loop against Cambium ([walkthrough](docs/quickstart.md); published images remain Phase 1b)
 
 **Exit criteria:**
 

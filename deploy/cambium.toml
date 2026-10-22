@@ -1,0 +1,13 @@
+api_listen = "0.0.0.0:8080"
+hooks_listen = "0.0.0.0:8081"
+hook_endpoint = "http://cambium:8081/api/enroute/hooks"
+backend_endpoint = "http://enroute:8082"
+backend_git_url = "http://enroute:8083/"
+public_git_url = "http://127.0.0.1:8083/"
+
+# Accelerated lifecycle for this disposable local demo.
+[compaction]
+max_delay_ms = 5000
+max_expired = 1
+settle_ms = 1000
+drain_ms = 1000

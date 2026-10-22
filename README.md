@@ -1,11 +1,24 @@
 # cambium
 
-> **Code name, pre-alpha.** Cambium has a runnable HTTP/MCP service, signed Git authorization over Enroute, and durable idempotency. Ephemeral branches and generation reclamation are implemented; the one-command container quickstart is being validated. See the [local development setup](docs/local-development.md).
+> **Code name, pre-alpha.** The Phase 1a slice includes HTTP/MCP, signed Git authorization, durable idempotency, and ephemeral branches whose unreachable storage is reclaimed. Try the [local container quickstart](docs/quickstart.md); the first source build takes additional time. Production deployment work remains in Phase 1b.
 > The final product name will be chosen before a public launch.
 
 [繁體中文](README.zh-TW.md)
 
 Cambium is an open-source, agent-first layer for git repositories. Agents get an API and an MCP server to create repositories, write changes without a checkout, and use short-lived branches that clean up after themselves. Stock git keeps working. Storage is handled by pluggable open-source git storage engines, starting with [Enroute](https://github.com/enroute-sh/enroute).
+
+## Try it locally
+
+With Docker Engine 28+, Compose v2, Python 3.11+, and Git 2.50+:
+
+```sh
+docker compose up --build -d --wait
+```
+
+The [quickstart](docs/quickstart.md) creates a tenant and runs an MCP agent that
+writes without a checkout, expires a scratch branch, verifies reclamation, and
+clones the surviving commit. Only API and Git ports are published, on loopback.
+There are no published container images yet; the command builds pinned sources.
 
 ## Why Cambium
 

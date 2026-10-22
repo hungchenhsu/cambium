@@ -1,6 +1,7 @@
 # Run the development service locally
 
 This setup runs the current Phase 1a service on one trusted development host.
+For the one-command container setup, use the [quickstart](quickstart.md).
 It requires the [development prerequisites](development.md), including Git 2.50
 or later. All listeners bind to loopback. Ephemeral branches and generation
 reclamation run in the service worker; see [branch lifecycle](branch-lifecycle.md).

@@ -16,7 +16,7 @@ MCP. Authentication and current authorization precede every replay.
 ## Request fields
 
 Fields shown with `?` are optional. Types and defaults are also published in the
-MCP `tools/list` input schemas. IDs are strings; repository IDs have the `repo_`
+MCP `tools/list` input schemas. IDs are strings; repository IDs have the `rep_`
 prefix. List limits default to 100 and cannot exceed 1000.
 
 | Operation | Input | Scope |
@@ -58,7 +58,7 @@ a path pair. Send one member of each pair; `_b64` uses padded standard base64.
 Paths are never normalized, and reads never follow a symlink.
 
 ```json
-{"repository_id":"repo_01...","message":"Write a greeting","changes":[{"action":"put","path":"hello.txt","contents":"hello\n"}],"idempotency_key":"greeting-1"}
+{"repository_id":"rep_01...","message":"Write a greeting","changes":[{"action":"put","path":"hello.txt","contents":"hello\n"}],"idempotency_key":"greeting-1"}
 ```
 
 `expected` is `{"kind":"absent"}` or

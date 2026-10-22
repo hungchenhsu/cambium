@@ -1,0 +1,72 @@
+name: cambium
+services:
+  initialize:
+    image: cambium-local:phase1a
+    build:
+      context: .
+      target: cambium
+    entrypoint: ["python3", "/usr/local/bin/initialize.py"]
+    volumes:
+      - metadata:/var/lib/cambium
+      - hook-key:/run/cambium-hook
+    network_mode: none
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+
+  enroute:
+    image: cambium-enroute-local:0.3.0-cambium.2
+    build:
+      context: .
+      target: enroute
+    depends_on:
+      initialize:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:8083:8083"
+    networks: [private]
+    volumes:
+      - enroute-data:/var/lib/enroute
+      - hook-key:/run/cambium-hook:ro
+    tmpfs: [/tmp]
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    healthcheck:
+      test: [CMD, python3, -c, "import socket; socket.create_connection(('127.0.0.1', 8082), 2).close()"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  cambium:
+    image: cambium-local:phase1a
+    build:
+      context: .
+      target: cambium
+    depends_on:
+      enroute:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks: [private]
+    volumes:
+      - metadata:/var/lib/cambium
+    tmpfs: [/tmp]
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    healthcheck:
+      test: [CMD, python3, -c, "import http.client; c = http.client.HTTPConnection('127.0.0.1', 8080, timeout=2); c.request('GET', '/mcp'); assert c.getresponse().status == 401"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+networks:
+  private:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"
+volumes:
+  metadata:
+  enroute-data:
+  hook-key:

@@ -1,11 +1,21 @@
 # cambium
 
-> **專案代號，pre-alpha。** Cambium 已有可執行的 HTTP／MCP 服務、透過 signed hooks 管控 Enroute 的 Git 授權，以及持久化 idempotency。短命分支與 generation 儲存回收已實作；一鍵啟動的 container quickstart 正在驗證中。請參考[本機開發設定](docs/local-development.md)。
+> **專案代號，pre-alpha。** Phase 1a 已包含 HTTP／MCP、signed Git 授權、持久化 idempotency，以及會回收無法到達資料的短命分支。可使用[本機 container quickstart](docs/quickstart.md) 試用；第一次從原始碼建置需要額外時間。正式部署所需工作仍列在 Phase 1b。
 > 正式產品名稱會在對外推出前決定。
 
 [English](README.md)
 
 Cambium 是開源、以 agent 為主要使用者的 git repo 管理層。agent 透過 API 和 MCP server 就能建立 repo、不 checkout 就寫入變更，並使用用完會自動清理的短命分支。原生 git 照常可用。儲存交給可替換的開源 git 儲存引擎，第一個是 [Enroute](https://github.com/enroute-sh/enroute)。
+
+## 在本機試用
+
+需要 Docker Engine 28+、Compose v2、Python 3.11+ 與 Git 2.50+：
+
+```sh
+docker compose up --build -d --wait
+```
+
+[Quickstart](docs/quickstart.md) 會建立租戶，並執行 MCP agent：不 checkout 就寫入、讓實驗分支到期、驗證儲存回收，再 clone 保留下來的 commit。只有 API 與 Git 會發布到主機的 loopback port。目前尚未發布 container images；指令會從釘選的原始碼建置。
 
 ## 為什麼需要 Cambium
 
