@@ -1,6 +1,6 @@
 # ADR-0011: Tenancy and authentication model
 
-- **Status:** Accepted
+- **Status:** Accepted; the token-mint response replay exception is superseded by [ADR-0014](0014-encrypted-idempotency-responses.md)
 - **Date:** 2026-10-18
 
 ## Context

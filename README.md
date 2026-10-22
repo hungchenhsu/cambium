@@ -1,6 +1,6 @@
 # cambium
 
-> **Code name, pre-alpha.** Cambium has protocol/backend contracts and a tested SQLite metadata and authorization store, but no runnable service yet.
+> **Code name, pre-alpha.** Cambium has a tested SQLite authorization store, an Enroute adapter, and shared operations with durable idempotency, but no runnable service yet.
 > The final product name will be chosen before a public launch.
 
 [繁體中文](README.zh-TW.md)

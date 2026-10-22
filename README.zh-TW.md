@@ -1,6 +1,6 @@
 # cambium
 
-> **專案代號，pre-alpha。** Cambium 已有 protocol／backend 介面，以及通過測試的 SQLite metadata 與授權 store，尚無可執行的服務。
+> **專案代號，pre-alpha。** Cambium 已有通過測試的 SQLite 授權 store、Enroute adapter，以及具備持久化 idempotency 的共用操作層，尚無可執行的服務。
 > 正式產品名稱會在對外推出前決定。
 
 [English](README.md)

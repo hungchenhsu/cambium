@@ -2,8 +2,9 @@
 
 The workspace includes API and backend contracts, a SQLite metadata store,
 token delegation and authorization, CI, license checks, and reusable git path
-fixtures. The Enroute adapter and signed-hook translation are implemented;
-the network service and generation lifecycle are still in progress.
+fixtures. The Enroute adapter, signed-hook translation, and shared operation
+layer are implemented; the network service and generation lifecycle are still
+in progress.
 
 ## Prerequisites
 
@@ -33,7 +34,9 @@ The protocol crate validates typed IDs and byte-field pairs and owns the
 [error registry](api/errors.md). The backend crate defines object-safe storage
 and git policy traits, including the durable seal required by ADR-0013. The
 store crate implements SQLite migrations and tenant-scoped metadata and token
-operations. The `cambium` binary and shared operation layer are the next Phase 1a work.
+operations. The server crate implements strict shared requests, repository and
+identity operations, changesets, raw-object reads, and durable idempotency. The
+`cambium` binary and HTTP/MCP transports are the next Phase 1a work.
 
 Server crates may use the Apache crates. Apache crates must not depend, directly
 or transitively, on AGPL crates. Inherit shared package settings and lints, but
@@ -136,6 +139,29 @@ lifecycle, ref expectations, changeset CAS, sealed reads and writes, copying
 from and into sealed repositories, and byte-exact reads of the full path corpus
 after stock-git push and backend copy. The patch workflow runs them in CI.
 They do not establish multi-tenant transport isolation or lifecycle reclamation.
+
+## Shared operation tests
+
+```sh
+ENROUTE_BIN="$PWD/target/enroute/target/debug/enroute" \
+  cargo test --locked -p cambium-server --test service -- --ignored
+```
+
+The service test uses a real Enroute process with fault injection around its
+adapter. It checks cross-tenant denial at the operation layer, token restriction
+checks before replay, byte-field output, pagination, path-collision warnings,
+CAS after a lost response, and completion after caller cancellation. Ordinary
+tests also check raw git parsing against the path corpus, mode-only diffs, and
+encryption that binds a cached response to its identity and request.
+
+`App` accepts a deployment response key and uses encrypted idempotency envelopes
+([ADR-0014](adr/0014-encrypted-idempotency-responses.md)). The network service must
+load that key from private storage and acquire the single-process deployment
+lock before invoking `recover_at_startup`. Recovery resumes recorded repository
+creation/deletion and makes abandoned idempotency reservations retryable.
+
+These are operation-layer checks. They do not yet establish HTTP/MCP framing,
+signed-hook tenant policy, container exposure, or ephemeral branch reclamation.
 
 ## Metadata and authorization tests
 

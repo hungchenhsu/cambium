@@ -17,6 +17,8 @@ use crate::{
     StoreResult, TokenHash, TokenSettings,
 };
 
+mod operations;
+
 pub struct SqliteStore {
     writer: SqlitePool,
     readers: SqlitePool,
@@ -219,6 +221,58 @@ impl SqliteStore {
             ));
         }
         Ok(())
+    }
+
+    async fn check_mint_at(
+        &self,
+        connection: &mut SqliteConnection,
+        principal: &Principal,
+        input: &MintToken,
+        now_ms: i64,
+    ) -> StoreResult<Principal> {
+        let (principal, depth) = self
+            .resolve(
+                &mut *connection,
+                &principal.tenant_id,
+                &principal.token_id,
+                now_ms,
+            )
+            .await?;
+        let target =
+            Self::identity_at(&mut *connection, &principal.tenant_id, &input.identity_id).await?;
+        if target.id != principal.actor.identity_id
+            && (target.kind != IdentityKind::Agent || principal.scope != Scope::TenantAdmin)
+        {
+            return Err(request(ErrorCode::PermissionDenied));
+        }
+        if !principal.scope.includes(input.scope) || input.expires_at_ms > principal.expires_at_ms {
+            return Err(request(ErrorCode::PermissionDenied));
+        }
+        if let Some(parent_repositories) = &principal.repositories
+            && input
+                .repositories
+                .as_ref()
+                .is_none_or(|child| child.iter().any(|id| !parent_repositories.contains(id)))
+        {
+            return Err(request(ErrorCode::PermissionDenied));
+        }
+        if depth >= self.settings.max_delegation_depth {
+            return Err(invalid("parent_token", "delegation depth limit reached"));
+        }
+        self.check_expiry(target.kind, input.expires_at_ms, now_ms)?;
+        if target.disabled_at_ms.is_some() {
+            return Err(request(ErrorCode::PermissionDenied));
+        }
+        if let Some(repositories) = &input.repositories {
+            for repository in repositories {
+                let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM repositories WHERE tenant_id = ? AND id = ? AND state != 'deleted')")
+                    .bind(principal.tenant_id.as_str()).bind(repository.as_str()).fetch_one(&mut *connection).await?;
+                if !exists {
+                    return Err(request(ErrorCode::NotFound));
+                }
+            }
+        }
+        Ok(principal)
     }
 
     async fn insert_identity(
@@ -457,29 +511,9 @@ impl Store for SqliteStore {
         now_ms: i64,
     ) -> StoreResult<Principal> {
         let mut tx = self.writer.begin().await?;
-        let (principal, depth) = self
-            .resolve(&mut tx, &principal.tenant_id, &principal.token_id, now_ms)
+        let principal = self
+            .check_mint_at(&mut tx, principal, input, now_ms)
             .await?;
-        let target = Self::identity_at(&mut tx, &principal.tenant_id, &input.identity_id).await?;
-        if target.id != principal.actor.identity_id
-            && (target.kind != IdentityKind::Agent || principal.scope != Scope::TenantAdmin)
-        {
-            return Err(request(ErrorCode::PermissionDenied));
-        }
-        if !principal.scope.includes(input.scope) || input.expires_at_ms > principal.expires_at_ms {
-            return Err(request(ErrorCode::PermissionDenied));
-        }
-        if let Some(parent_repositories) = &principal.repositories
-            && input
-                .repositories
-                .as_ref()
-                .is_none_or(|child| child.iter().any(|id| !parent_repositories.contains(id)))
-        {
-            return Err(request(ErrorCode::PermissionDenied));
-        }
-        if depth >= self.settings.max_delegation_depth {
-            return Err(invalid("parent_token", "delegation depth limit reached"));
-        }
         let result = self
             .insert_token(
                 &mut tx,
