@@ -56,8 +56,8 @@ The smallest Cambium that shows the agent layer working over Enroute.
 
 - [ ] Single Cambium binary plus Enroute, started together with one command (container compose file), with Enroute pinned to a version tag
 - [ ] Cambium implements Enroute's hooks (authentication, visibility, pre-receive, post-receive) and verifies that hook calls come from Enroute
-- [ ] SQLite metadata store
-- [ ] Tenants and scoped, short-lived tokens; tenant and identity fields (human or agent) in every record
+- [x] SQLite metadata store (tenant/identity/token/repository operations; lifecycle operation methods follow with their implementations)
+- [x] Tenants and scoped, short-lived tokens; tenant and identity fields (human or agent) in every record ([store tests](crates/cambium-store/tests/authorization.rs); transport isolation remains below)
 - [ ] API: create and delete repositories
 - [ ] API: write a changeset (paths and contents) without a checkout, with an idempotency key
 - [ ] API: read a file at a revision, list a tree, diff two revisions

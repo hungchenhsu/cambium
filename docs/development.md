@@ -1,7 +1,8 @@
 # Development
 
-Phase 0 supplies a buildable workspace, CI, license checks, and reusable git path
-fixtures. It does not yet provide a running service or a backend implementation.
+The workspace includes API and backend contracts, a SQLite metadata store,
+token delegation and authorization, CI, license checks, and reusable git path
+fixtures. The network service and Enroute adapter are still in progress.
 
 ## Prerequisites
 
@@ -27,9 +28,11 @@ dependencies change. All crates have `publish = false` during scaffolding.
 | `cambium-store` | AGPL-3.0-only | Tenant-scoped metadata access and all SQL (ADR-0010) |
 | `cambium-server` | AGPL-3.0-only | Shared operation layer, then HTTP, MCP, and service composition |
 
-Only the conformance crate has behavior in Phase 0. The other crates establish
-the dependency boundaries; their types, traits, and implementations are Phase 1a
-work. The `cambium` binary will be added to `cambium-server` in Phase 1a.
+The protocol crate validates typed IDs and byte-field pairs and owns the
+[error registry](api/errors.md). The backend crate defines object-safe storage
+and git policy traits, including the durable seal required by ADR-0013. The
+store crate implements SQLite migrations and tenant-scoped metadata and token
+operations. The `cambium` binary and Enroute adapter are the next Phase 1a work.
 
 Server crates may use the Apache crates. Apache crates must not depend, directly
 or transitively, on AGPL crates. Inherit shared package settings and lints, but
@@ -49,8 +52,8 @@ git diff --check
 
 The [CI workflow](../.github/workflows/ci.yml) runs Rust checks on Linux and macOS,
 and license checks on Linux. Run `actionlint` after changing workflows if it is
-available. CI is configured here; branch protection must separately require the
-new checks after their first successful GitHub run.
+available. Branch protection requires the DCO, Linux and macOS Rust, and license
+policy checks.
 
 ## License policy
 
@@ -101,3 +104,21 @@ could erase the very cases under test. No developer repository is modified.
 These are reusable input fixtures and a stock-git round trip, not evidence of
 Enroute conformance, Cambium path parsing, or backend migration correctness.
 Those checks belong to the implementations described in ADR-0007.
+
+## Metadata and authorization tests
+
+`cargo test -p cambium-store` creates disposable SQLite databases. It tests
+cross-tenant denial for the implemented store methods, token delegation limits,
+human/agent separation, parent revocation, disabled identities, restart
+persistence, and unknown or modified migrations. A schema test requires every
+tenant table and unique index to start with the tenant boundary. The named
+deployment exceptions are `tenants` and `_sqlx_migrations`.
+
+`SqliteStore::open` uses a single writer, a separate read pool, WAL, foreign keys,
+FULL synchronization, and a five-second busy timeout. Mutations re-resolve the
+token and all ancestors in the same transaction as the write. The deployment
+bootstrap and human-token issuance methods are intended only for host admin
+commands. There is no network tenant creation operation.
+
+These tests establish store behavior, not HTTP, MCP, git-hook, or real-backend
+isolation. Each transport needs integration tests when its implementation lands.

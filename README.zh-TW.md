@@ -1,6 +1,6 @@
 # cambium
 
-> **專案代號，pre-alpha。** Cambium 已有 Rust workspace 與基礎測試，尚無可執行的服務。
+> **專案代號，pre-alpha。** Cambium 已有 protocol／backend 介面，以及通過測試的 SQLite metadata 與授權 store，尚無可執行的服務。
 > 正式產品名稱會在對外推出前決定。
 
 [English](README.md)
@@ -50,7 +50,7 @@ Cambium 就是給大量 agent 用的那一層應用程式，架在可以替換�
 
 完整 checklist 見 [ROADMAP.md](ROADMAP.md)（英文），所有設計決策見 [docs/adr](docs/adr/README.md)（英文）。
 
-建置與驗證 Phase 0 workspace 的方式，見[開發指引](docs/development.md)（英文）。
+建置與驗證 workspace 的方式，見[開發指引](docs/development.md)（英文）。
 
 ## 先前研究
 
