@@ -25,7 +25,8 @@ docker compose up -d --wait
 ```
 
 The one-shot initializer creates private keys and SQLite metadata. Repeating
-`up` preserves them. The images run as UID 10001 with a read-only root filesystem.
+`up` preserves them, and an interrupted first initialization can be retried.
+The images run as UID 10001 with a read-only root filesystem.
 Metadata, Enroute storage, and the shared hook key use separate named volumes.
 Enroute can read only the hook signing key, not Cambium's database or response key.
 

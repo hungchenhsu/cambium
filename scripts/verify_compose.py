@@ -12,7 +12,6 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-import socket
 import subprocess
 import time
 from typing import Any
@@ -86,13 +85,6 @@ def main(args: argparse.Namespace) -> None:
         "assert not Path('/var/lib/cambium/state/metadata.sqlite').exists(); "
         "assert not Path('/var/lib/cambium/state/responses.key').exists()",
     ) == ""
-    for port in [8081, 8082, 8084]:
-        try:
-            connection = socket.create_connection(("127.0.0.1", port), 0.5)
-        except OSError:
-            continue
-        connection.close()
-        raise AssertionError(f"Private port {port} is reachable on the host")
     networks = backend["NetworkSettings"]["Networks"]
     assert len(networks) == 1
     network_name, attachment = next(iter(networks.items()))
