@@ -457,6 +457,11 @@ async fn records_survive_reopen_and_repository_names_are_tenant_scoped() {
         .mark_repository_ready(&a, &one.id, NOW + 1)
         .await
         .unwrap();
+    let unicode = store
+        .reserve_repository(&a, "unicode", "topic/\u{fffd}", NOW)
+        .await
+        .unwrap();
+    assert_eq!(unicode.default_branch, "topic/\u{fffd}");
     store.close().await;
     let store = SqliteStore::open(
         directory.path().join("metadata.sqlite"),

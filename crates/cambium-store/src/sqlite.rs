@@ -651,7 +651,6 @@ fn valid_branch(value: &str) -> bool {
         && !value.ends_with('.')
         && !value.contains("..")
         && !value.contains("@{")
-        && !value.contains('\u{fffd}')
         && !value
             .bytes()
             .any(|b| b <= 32 || b == 127 || b"~^:?*[\\".contains(&b))
