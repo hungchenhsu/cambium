@@ -7,3 +7,9 @@ pub mod requests;
 pub mod secrets;
 pub mod service;
 pub mod transport;
+
+pub mod lifecycle;
+
+pub mod internal_copy;
+
+pub mod compaction;

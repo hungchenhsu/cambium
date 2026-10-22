@@ -58,6 +58,32 @@ pub trait CopyCredentials: Send + Sync {
         destination: &BackendRepositoryId,
         copies: &[RefCopy],
     ) -> Result<String, BackendError>;
+    async fn finished_copy(&self, _secret: &str) -> Result<(), BackendError> {
+        Ok(())
+    }
+}
+
+struct CopyCredential {
+    provider: Arc<dyn CopyCredentials>,
+    secret: Option<String>,
+}
+impl CopyCredential {
+    async fn release(mut self) -> Result<(), BackendError> {
+        let secret = self.secret.take().ok_or(BackendError::Internal)?;
+        self.provider.finished_copy(&secret).await
+    }
+}
+impl Drop for CopyCredential {
+    fn drop(&mut self) {
+        if let Some(secret) = self.secret.take() {
+            let provider = self.provider.clone();
+            if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+                runtime.spawn(async move {
+                    let _ = provider.finished_copy(&secret).await;
+                });
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -579,61 +605,74 @@ impl Backend for EnrouteBackend {
             .git_base
             .join(&format!("{}.git", destination.as_str()))
             .map_err(|_| invalid("destination"))?;
-        let credentials = match &self.credentials {
-            Some(provider) => Some(api::remote::Credentials::BearerToken(
-                provider.for_copy(destination, copies).await?,
-            )),
+        let credential = match &self.credentials {
+            Some(provider) => Some(CopyCredential {
+                provider: provider.clone(),
+                secret: Some(provider.for_copy(destination, copies).await?),
+            }),
             None => None,
         };
-        let result = SyncServiceClient::new(self.channel.clone())
-            .push_to_remote(api::PushToRemoteRequest {
-                repo: Some(key(source)),
-                remote: Some(api::Remote {
-                    url: url.to_string(),
-                    credentials,
-                }),
-                refs: copies
-                    .iter()
-                    .map(|copy| api::RefSpec {
-                        source: copy.source.clone(),
-                        destination: copy.destination.clone(),
-                        force: copy.allow_non_fast_forward,
-                    })
-                    .collect(),
-                atomic,
-            })
-            .await
-            .map_err(map_status)?
-            .into_inner();
-        if result.outcomes.len() != copies.len() {
-            return Err(BackendError::Internal);
-        }
-        if result.outcomes.iter().any(|outcome| {
-            outcome.status == api::ref_push_outcome::Status::Rejected as i32
-                && outcome.message == "repository sealed"
-        }) {
-            return Err(BackendError::RepositorySealed);
-        }
-        for (outcome, copy) in result.outcomes.iter().zip(copies) {
-            if outcome.destination != copy.destination {
+        let credentials = credential.as_ref().map(|lease| {
+            api::remote::Credentials::BearerToken(
+                lease.secret.as_ref().expect("active lease").clone(),
+            )
+        });
+        let result = async {
+            let result = SyncServiceClient::new(self.channel.clone())
+                .push_to_remote(api::PushToRemoteRequest {
+                    repo: Some(key(source)),
+                    remote: Some(api::Remote {
+                        url: url.to_string(),
+                        credentials,
+                    }),
+                    refs: copies
+                        .iter()
+                        .map(|copy| api::RefSpec {
+                            source: copy.source.clone(),
+                            destination: copy.destination.clone(),
+                            force: copy.allow_non_fast_forward,
+                        })
+                        .collect(),
+                    atomic,
+                })
+                .await
+                .map_err(map_status)?
+                .into_inner();
+            if result.outcomes.len() != copies.len() {
                 return Err(BackendError::Internal);
             }
-            use api::ref_push_outcome::Status;
-            match Status::try_from(outcome.status) {
-                Ok(Status::Updated | Status::UpToDate) => {}
-                Ok(Status::Rejected) => {
-                    return Err(BackendError::StaleExpectation {
-                        actual: outcome
-                            .old_object_id
-                            .clone()
-                            .map(|value| required_oid(Some(value)))
-                            .transpose()?,
-                    });
-                }
-                _ => return Err(BackendError::Internal),
+            if result.outcomes.iter().any(|outcome| {
+                outcome.status == api::ref_push_outcome::Status::Rejected as i32
+                    && outcome.message == "repository sealed"
+            }) {
+                return Err(BackendError::RepositorySealed);
             }
+            for (outcome, copy) in result.outcomes.iter().zip(copies) {
+                if outcome.destination != copy.destination {
+                    return Err(BackendError::Internal);
+                }
+                use api::ref_push_outcome::Status;
+                match Status::try_from(outcome.status) {
+                    Ok(Status::Updated | Status::UpToDate) => {}
+                    Ok(Status::Rejected) => {
+                        return Err(BackendError::StaleExpectation {
+                            actual: outcome
+                                .old_object_id
+                                .clone()
+                                .map(|value| required_oid(Some(value)))
+                                .transpose()?,
+                        });
+                    }
+                    _ => return Err(BackendError::Internal),
+                }
+            }
+            Ok(())
         }
-        Ok(())
+        .await;
+        if let Some(credential) = credential {
+            credential.release().await?;
+        }
+        result
     }
 }
 

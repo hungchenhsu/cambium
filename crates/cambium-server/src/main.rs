@@ -187,16 +187,21 @@ async fn run(cli: &Cli) -> deployment::Result<()> {
         Command::Serve => {
             let key = deployment::response_key(&cli.data_dir)?;
             let keys = config.verifying_keys(&cli.data_dir)?;
-            let backend =
-                EnrouteBackend::connect(&config.backend_endpoint, &config.backend_git_url, None)
-                    .await?;
-            let app = Arc::new(App::new(
-                store,
-                Arc::new(backend),
-                Arc::new(SystemClock),
-                &key,
-                config.public_git_url,
-            ));
+            let clock = Arc::new(SystemClock);
+            let copies = Arc::new(cambium_server::internal_copy::CopyTokens {
+                store: store.clone(),
+                clock: clock.clone(),
+            });
+            let backend = EnrouteBackend::connect(
+                &config.backend_endpoint,
+                &config.backend_git_url,
+                Some(copies),
+            )
+            .await?;
+            let mut app = App::new(store, Arc::new(backend), clock, &key, config.public_git_url);
+            app.lifecycle = config.branches;
+            app.compaction = config.compaction;
+            let app = Arc::new(app);
             let hooks = Arc::new(HookAdapter::new(
                 keys,
                 &config.hook_endpoint,
@@ -207,7 +212,9 @@ async fn run(cli: &Cli) -> deployment::Result<()> {
             app.recover_at_startup().await?;
             let worker_app = app.clone();
             let maintenance = tokio::spawn(async move {
-                let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+                let mut interval = tokio::time::interval(std::time::Duration::from_millis(
+                    config.maintenance_interval_ms,
+                ));
                 loop {
                     interval.tick().await;
                     if worker_app
@@ -217,6 +224,9 @@ async fn run(cli: &Cli) -> deployment::Result<()> {
                         .is_err()
                     {
                         eprintln!("cambium: expired response cleanup failed; will retry");
+                    }
+                    if worker_app.run_lifecycle_once().await.is_err() {
+                        eprintln!("cambium: branch lifecycle recovery failed; will retry");
                     }
                     if worker_app.resume_repositories().await.is_err() {
                         eprintln!("cambium: repository recovery failed; will retry");

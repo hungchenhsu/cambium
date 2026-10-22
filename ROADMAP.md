@@ -22,7 +22,9 @@ Decisions and scaffolding before any code.
 - [x] API transport and error code registry ([ADR-0012](docs/adr/0012-api-transport-and-errors.md))
 - [x] Durable seal before final reconciliation and deletion ([ADR-0013](docs/adr/0013-sealed-generation-reclamation.md))
 - [x] Encrypted idempotency response replay, including token minting ([ADR-0014](docs/adr/0014-encrypted-idempotency-responses.md))
+- [x] Multiple late-write rescue values ([ADR-0016](docs/adr/0016-multiple-rescue-values.md))
 - [x] Durable ref creation receipts for unambiguous branch ownership ([ADR-0015](docs/adr/0015-durable-ref-creation-receipts.md))
+- [x] Durable reconciliation progress and write-ahead rescue intents ([ADR-0017](docs/adr/0017-durable-reconciliation-progress.md))
 
 **Scaffolding**
 
@@ -57,15 +59,15 @@ met. The Code of Conduct contact and final product name below remain open.
 The smallest Cambium that shows the agent layer working over Enroute.
 
 - [ ] Single Cambium binary plus Enroute, started together with one command (container compose file), with Enroute pinned to a version tag
-- [ ] Cambium implements Enroute's hooks (authentication, visibility, pre-receive, post-receive) and verifies that hook calls come from Enroute
-- [x] SQLite metadata store (tenant/identity/token/repository operations; lifecycle operation methods follow with their implementations)
+- [x] Cambium implements Enroute's hooks (authentication, visibility, pre-receive, post-receive) and verifies that hook calls come from Enroute
+- [x] SQLite metadata store, including branch lifecycle and compaction recovery
 - [x] Tenants and scoped, short-lived tokens; tenant and identity fields (human or agent) in every record ([store tests](crates/cambium-store/tests/authorization.rs); transport isolation remains below)
 - [x] API: create and delete repositories
 - [x] API: write a changeset (paths and contents) without a checkout, with an idempotency key
 - [x] API: read a file at a revision, list a tree, diff two revisions
-- [ ] Ephemeral branches with a TTL and cleanup, with storage reclaimed by the method chosen in the reclamation ADR
+- [x] Ephemeral branches with a TTL and cleanup, with storage reclaimed by the method chosen in the reclamation ADR
 - [x] Stock git clone, fetch, and push through Enroute, authorized by Cambium, with a documented and tested minimum git version (Enroute requires Git 2.50 or later)
-- [ ] Structured errors with stable codes for every call above (implemented operations covered; ephemeral operations remain)
+- [x] Structured errors with stable codes for every call above
 - [x] MCP server exposing the same operations ([transport and SDK checks](docs/local-development.md#verify-the-transport-and-mcp-client))
 - [ ] Cross-tenant denial tests for the API, MCP, and git traffic, plus a check that Enroute's gRPC listener is not reachable from outside
 - [ ] Five-minute quickstart, plus an example script that drives an agent loop against Cambium

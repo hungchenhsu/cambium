@@ -474,6 +474,43 @@ pub fn tools() -> Vec<Value> {
             false,
             true,
         ),
+        tool::<requests::Repository>(
+            "request_compaction",
+            "Request immediate storage reclamation for a repository.",
+            false,
+            true,
+        ),
+        tool::<requests::GetReclamation>(
+            "get_reclamation",
+            "Read reclamation progress, overdue status, and conflict rescue refs.",
+            true,
+            false,
+        ),
+        tool::<requests::CreateEphemeralBranch>(
+            "create_ephemeral_branch",
+            "Create a recoverable branch with a bounded TTL.",
+            false,
+            false,
+        ),
+        tool::<requests::Branch>("get_branch", "Read a branch lifecycle record.", true, false),
+        tool::<requests::ListBranches>(
+            "list_branches",
+            "List branch lifecycle records with pagination.",
+            true,
+            false,
+        ),
+        tool::<requests::ExtendBranch>(
+            "extend_branch",
+            "Extend a live ephemeral branch from the request time without shortening its TTL.",
+            false,
+            false,
+        ),
+        tool::<requests::Branch>(
+            "promote_branch",
+            "Make a live ephemeral branch permanent.",
+            false,
+            false,
+        ),
         tool::<requests::WriteChangeset>(
             "write_changeset",
             "Write file changes as one CAS-protected commit without a checkout.",

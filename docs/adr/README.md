@@ -20,4 +20,7 @@ Each ADR records one decision: its context, the decision itself, and its consequ
 | [0014](0014-encrypted-idempotency-responses.md) | Encrypted idempotency responses | Accepted; amends 0010 and 0011 |
 | [0015](0015-durable-ref-creation-receipts.md) | Durable receipts for ref creation | Accepted; amends 0006, 0007, and 0009 |
 
+| [0016](0016-multiple-rescue-values.md) | Preserve every conflicting late value | Accepted; amends 0009 |
+| [0017](0017-durable-reconciliation-progress.md) | Persist reconciliation progress before backend mutations | Accepted; amends 0009 and 0013 |
+
 New ADRs use the next number and the sections Status, Date, Context, Decision, and Consequences.

@@ -1,6 +1,6 @@
 # ADR-0013: Seal an old generation before final reconciliation
 
-- **Status:** Accepted; amends ADR-0006, ADR-0007, and ADR-0009 as specified below
+- **Status:** Accepted; amends ADR-0006, ADR-0007, and ADR-0009 as specified below; reconciliation progress and recovery ordering are amended by [ADR-0017](0017-durable-reconciliation-progress.md)
 - **Date:** 2026-10-23
 
 ## Context

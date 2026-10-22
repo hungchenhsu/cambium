@@ -1,7 +1,9 @@
 //! HTTP and MCP decode the same strict request shapes.
 
 use cambium_backend::FileMode;
-use cambium_protocol::{IdentityId, IdentityKind, ObjectId, RepositoryId, Scope, TokenId};
+use cambium_protocol::{
+    BranchId, CompactionId, IdentityId, IdentityKind, ObjectId, RepositoryId, Scope, TokenId,
+};
 use serde::{Deserialize, Serialize};
 
 fn main_branch() -> String {
@@ -27,6 +29,13 @@ pub enum Operation {
     GetRepository(Repository),
     ListRepositories(ListRepositories),
     DeleteRepository(Repository),
+    RequestCompaction(Repository),
+    GetReclamation(GetReclamation),
+    CreateEphemeralBranch(CreateEphemeralBranch),
+    GetBranch(Branch),
+    ListBranches(ListBranches),
+    ExtendBranch(ExtendBranch),
+    PromoteBranch(Branch),
     WriteChangeset(WriteChangeset),
     ReadFile(ReadFile),
     ListTree(ListTree),
@@ -41,7 +50,14 @@ pub enum Operation {
 impl Operation {
     pub fn repository(&self) -> Option<&RepositoryId> {
         match self {
-            Self::GetRepository(v) | Self::DeleteRepository(v) => Some(&v.repository_id),
+            Self::GetRepository(v) | Self::DeleteRepository(v) | Self::RequestCompaction(v) => {
+                Some(&v.repository_id)
+            }
+            Self::GetReclamation(v) => Some(&v.repository_id),
+            Self::CreateEphemeralBranch(v) => Some(&v.repository_id),
+            Self::GetBranch(v) | Self::PromoteBranch(v) => Some(&v.repository_id),
+            Self::ListBranches(v) => Some(&v.repository_id),
+            Self::ExtendBranch(v) => Some(&v.repository_id),
             Self::WriteChangeset(v) => Some(&v.repository_id),
             Self::ReadFile(v) => Some(&v.repository_id),
             Self::ListTree(v) => Some(&v.repository_id),
@@ -51,8 +67,13 @@ impl Operation {
     }
     pub fn scope(&self) -> Scope {
         match self {
-            Self::CreateRepository(_) | Self::DeleteRepository(_) => Scope::RepoAdmin,
-            Self::WriteChangeset(_) => Scope::RepoWrite,
+            Self::CreateRepository(_) | Self::DeleteRepository(_) | Self::RequestCompaction(_) => {
+                Scope::RepoAdmin
+            }
+            Self::WriteChangeset(_)
+            | Self::CreateEphemeralBranch(_)
+            | Self::ExtendBranch(_)
+            | Self::PromoteBranch(_) => Scope::RepoWrite,
             Self::CreateIdentity(_)
             | Self::GetIdentity(_)
             | Self::RevokeToken(_)
@@ -69,6 +90,9 @@ impl Operation {
                 | Self::ListTree(_)
                 | Self::Diff(_)
                 | Self::GetIdentity(_)
+                | Self::GetReclamation(_)
+                | Self::GetBranch(_)
+                | Self::ListBranches(_)
         )
     }
 }
@@ -209,6 +233,50 @@ pub struct MintToken {
 #[serde(deny_unknown_fields)]
 pub struct Token {
     pub token_id: TokenId,
+}
+
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CreateEphemeralBranch {
+    pub repository_id: RepositoryId,
+    pub name: String,
+    pub start_commit: ObjectId,
+    #[serde(default = "hour")]
+    pub ttl_seconds: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Branch {
+    pub repository_id: RepositoryId,
+    pub branch_id: BranchId,
+}
+
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ExtendBranch {
+    pub repository_id: RepositoryId,
+    pub branch_id: BranchId,
+    pub ttl_seconds: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ListBranches {
+    pub repository_id: RepositoryId,
+    #[serde(default = "limit")]
+    pub limit: u32,
+    pub page_token: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetReclamation {
+    pub repository_id: RepositoryId,
+    pub compaction_id: Option<CompactionId>,
+    #[serde(default = "limit")]
+    pub limit: u32,
+    pub page_token: Option<String>,
 }
 
 /// System actors are internal and cannot be created through an operation.

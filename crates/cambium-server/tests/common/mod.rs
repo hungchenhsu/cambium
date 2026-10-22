@@ -24,11 +24,35 @@ impl Drop for Server {
 
 impl Server {
     #[allow(dead_code)]
+    pub fn layer_files(&self, repository: &str) -> Vec<std::path::PathBuf> {
+        let path = self
+            ._directory
+            .path()
+            .join("objects/repos")
+            .join(repository)
+            .join("layers");
+        std::fs::read_dir(path)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension == "layer")
+            })
+            .collect()
+    }
+
+    #[allow(dead_code)]
     pub async fn start() -> Self {
         Self::start_with_hooks(None).await
     }
 
     pub async fn start_with_hooks(hooks: Option<(&str, &str)>) -> Self {
+        Self::start_with_options(hooks, false).await
+    }
+
+    pub async fn start_with_options(hooks: Option<(&str, &str)>, short_sweep: bool) -> Self {
         let binary =
             std::env::var("ENROUTE_BIN").expect("ENROUTE_BIN must name the patched binary");
         let directory = tempfile::tempdir().unwrap();
@@ -49,6 +73,11 @@ impl Server {
             api = ports[0],
             git = ports[1],
         );
+        if short_sweep {
+            contents.push_str(
+                "[layers]\ninline_layer = 0\nsweep_interval = '100ms'\nsweep_retention = '300ms'\n",
+            );
+        }
         if let Some((endpoint, pem)) = hooks {
             contents.push_str(&format!(
                 "[hooks]\nenabled = ['authorize', 'visible_refs', 'pre_receive', 'post_receive']\nendpoint_url = '{endpoint}'\nsigning_key = '''{pem}'''\n"
