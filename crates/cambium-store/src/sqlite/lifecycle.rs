@@ -242,9 +242,12 @@ impl LifecycleStore for SqliteStore {
             .bind(tenant.as_str()).bind(repo.as_str()).fetch_all(&self.readers).await?)
     }
 
-    async fn deployment_lifecycle_repositories(&self) -> StoreResult<Vec<RepositoryRecord>> {
-        let rows = sqlx::query("SELECT * FROM repositories r WHERE r.state = 'ready' AND (EXISTS(SELECT 1 FROM branches b WHERE b.tenant_id = r.tenant_id AND b.repository_id = r.id AND b.state IN ('creating', 'active', 'expiring')) OR EXISTS(SELECT 1 FROM expiries e WHERE e.tenant_id = r.tenant_id AND e.repository_id = r.id AND e.reclaimed_at_ms IS NULL) OR EXISTS(SELECT 1 FROM compactions c WHERE c.tenant_id = r.tenant_id AND c.repository_id = r.id ))")
-            .fetch_all(&self.readers).await?;
+    async fn deployment_lifecycle_repositories(
+        &self,
+        now_ms: i64,
+    ) -> StoreResult<Vec<RepositoryRecord>> {
+        let rows = sqlx::query("SELECT * FROM repositories r WHERE r.state = 'ready' AND (EXISTS(SELECT 1 FROM branches b WHERE b.tenant_id = r.tenant_id AND b.repository_id = r.id AND b.state IN ('creating', 'active', 'expiring')) OR EXISTS(SELECT 1 FROM expiries e WHERE e.tenant_id = r.tenant_id AND e.repository_id = r.id AND e.reclaimed_at_ms IS NULL) OR EXISTS(SELECT 1 FROM compactions c WHERE c.tenant_id = r.tenant_id AND c.repository_id = r.id AND (c.completed_at_ms IS NULL OR r.orphan_sweep_after_ms <= ?)))")
+            .bind(now_ms).fetch_all(&self.readers).await?;
         rows.iter().map(repository).collect()
     }
 }

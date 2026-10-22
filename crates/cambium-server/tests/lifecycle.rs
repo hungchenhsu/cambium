@@ -15,7 +15,7 @@ use cambium_store::{Bootstrap, SqliteStore, Store, TokenSettings};
 use serde_json::{Value, json};
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, AtomicI64, Ordering},
+    atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering},
 };
 use tokio::sync::Notify;
 
@@ -30,6 +30,7 @@ impl Clock for TestClock {
 
 struct FaultBackend {
     backend: cambium_backend_enroute::EnrouteBackend,
+    list_refs_calls: AtomicUsize,
     lose_next_response: AtomicBool,
     lose_creation_response: AtomicBool,
     race_creation: AtomicBool,
@@ -113,6 +114,7 @@ impl Backend for FaultBackend {
         id: &BackendRepositoryId,
         prefixes: &[String],
     ) -> Result<RefSnapshot, BackendError> {
+        self.list_refs_calls.fetch_add(1, Ordering::SeqCst);
         self.backend.list_refs(id, prefixes).await
     }
     async fn update_refs(
@@ -251,6 +253,7 @@ async fn ephemeral_ownership_survives_lost_replies_expiry_and_name_reuse() {
     let clock = Arc::new(TestClock(AtomicI64::new(NOW)));
     let backend = Arc::new(FaultBackend {
         backend: server.backend.clone(),
+        list_refs_calls: AtomicUsize::new(0),
         lose_next_response: AtomicBool::new(false),
         lose_creation_response: AtomicBool::new(false),
         race_creation: AtomicBool::new(false),
@@ -1105,6 +1108,7 @@ async fn signed_internal_copies_are_scoped_revoked_and_free_old_layer_files() {
 fn faults(backend: cambium_backend_enroute::EnrouteBackend) -> Arc<FaultBackend> {
     Arc::new(FaultBackend {
         backend,
+        list_refs_calls: AtomicUsize::new(0),
         lose_next_response: AtomicBool::new(false),
         lose_creation_response: AtomicBool::new(false),
         race_creation: AtomicBool::new(false),
@@ -2053,4 +2057,119 @@ async fn failed_verification_aborts_and_repository_deletion_waits_for_copy() {
             Err(BackendError::RepositoryNotFound)
         ));
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires ENROUTE_BIN pointing to the pinned patched backend"]
+async fn orphan_sweeps_are_bounded_and_still_remove_late_temporary_refs() {
+    let server = common::Server::start().await;
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("metadata.sqlite");
+    let store = Arc::new(
+        SqliteStore::open(&path, TokenSettings::default())
+            .await
+            .unwrap(),
+    );
+    let clock = Arc::new(TestClock(AtomicI64::new(NOW)));
+    let backend = faults(server.backend.clone());
+    let mut app = fast_app(store.clone(), backend.clone(), clock.clone(), &server.git);
+    let secret = new_token().unwrap();
+    let principal = store
+        .deployment_bootstrap(
+            &Bootstrap {
+                tenant_slug: "orphan-sweep".into(),
+                human_name: "Operator".into(),
+                token_hash: token_hash(&secret).unwrap(),
+                expires_at_ms: NOW + 86_400_000,
+            },
+            NOW,
+        )
+        .await
+        .unwrap();
+    let repo = success(
+        call(
+            &app,
+            &secret,
+            "create_repository",
+            json!({"name": "project"}),
+        )
+        .await,
+    )["repository_id"]
+        .clone();
+    let repository: RepositoryId = serde_json::from_value(repo.clone()).unwrap();
+    let base = success(call(&app, &secret, "write_changeset", json!({"repository_id": repo, "message": "base", "changes": [{"action": "put", "path": "base", "contents": "retained"}]})).await)["commit_id"].clone();
+    let base: ObjectId = serde_json::from_value(base).unwrap();
+    let mut names = Vec::new();
+    for _ in 0..2 {
+        let record = success(
+            call(
+                &app,
+                &secret,
+                "request_compaction",
+                json!({"repository_id": repo}),
+            )
+            .await,
+        );
+        names.push(format!(
+            "refs/cambium/{}/copy/late",
+            record["compaction_id"].as_str().unwrap()
+        ));
+        for _ in 0..8 {
+            app.run_lifecycle_once().await.unwrap();
+        }
+    }
+    let active: BackendRepositoryId = store
+        .get_repository(&principal.tenant_id, &repository)
+        .await
+        .unwrap()
+        .backend_id()
+        .try_into()
+        .unwrap();
+    let updates = names
+        .iter()
+        .map(|name| RefUpdate {
+            name: name.clone(),
+            expected: RefExpectation::Absent,
+            new: Some(base.clone()),
+        })
+        .collect::<Vec<_>>();
+    backend.update_refs(&active, &updates).await.unwrap();
+    let reopened = Arc::new(
+        SqliteStore::open(&path, TokenSettings::default())
+            .await
+            .unwrap(),
+    );
+    app = fast_app(reopened, backend.clone(), clock.clone(), &server.git);
+    app.recover_at_startup().await.unwrap();
+    backend.list_refs_calls.store(0, Ordering::SeqCst);
+    for _ in 0..10 {
+        app.run_lifecycle_once().await.unwrap();
+    }
+    assert_eq!(backend.list_refs_calls.load(Ordering::SeqCst), 0);
+    clock.0.store(NOW + 60_000, Ordering::SeqCst);
+    app.run_lifecycle_once().await.unwrap();
+    assert_eq!(backend.list_refs_calls.load(Ordering::SeqCst), 1);
+    assert!(
+        server
+            .backend
+            .list_refs(&active, &["refs/cambium/".into()])
+            .await
+            .unwrap()
+            .refs
+            .is_empty()
+    );
+    // An old, already-admitted RPC can still land after a successful sweep.
+    backend.update_refs(&active, &updates[..1]).await.unwrap();
+    clock.0.store(NOW + 120_000, Ordering::SeqCst);
+    app.run_lifecycle_once().await.unwrap();
+    assert_eq!(backend.list_refs_calls.load(Ordering::SeqCst), 2);
+    assert!(
+        server
+            .backend
+            .list_refs(&active, &["refs/cambium/".into()])
+            .await
+            .unwrap()
+            .refs
+            .is_empty()
+    );
 }

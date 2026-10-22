@@ -802,14 +802,69 @@ impl App {
         &self,
         repository: &RepositoryRecord,
     ) -> Result<(), ApiError> {
-        let id = backend_id(repository)?;
-        for record in self
+        let now = self.clock.now_ms();
+        if !self
             .store
-            .completed_compactions(&repository.tenant_id, &repository.id)
+            .claim_orphan_sweep(
+                &repository.tenant_id,
+                &repository.id,
+                now,
+                now.saturating_add(60_000),
+            )
             .await
             .map_err(store_error)?
         {
-            self.clean_temporary(&record, &id, false).await?;
+            return Ok(());
+        }
+        let id = backend_id(repository)?;
+        let snapshot = self
+            .backend
+            .list_refs(&id, &["refs/cambium/".into()])
+            .await
+            .map_err(backend_error)?;
+        let mut groups = BTreeMap::<CompactionId, Vec<RefUpdate>>::new();
+        for reference in snapshot.refs {
+            let Some((candidate, _)) = reference
+                .name
+                .strip_prefix("refs/cambium/")
+                .and_then(|rest| rest.split_once('/'))
+            else {
+                continue;
+            };
+            let Ok(compaction) = candidate.parse::<CompactionId>() else {
+                continue;
+            };
+            groups.entry(compaction).or_default().push(RefUpdate {
+                name: reference.name,
+                expected: RefExpectation::At(reference.object_id),
+                new: None,
+            });
+        }
+        for (compaction, updates) in groups {
+            let record = match self
+                .store
+                .get_compaction(&repository.tenant_id, &repository.id, &compaction)
+                .await
+            {
+                Ok(record) => record,
+                Err(error) if error.code() == ErrorCode::NotFound => continue,
+                Err(error) => return Err(store_error(error)),
+            };
+            if record.completed_at_ms.is_none() {
+                continue;
+            }
+            for batch in updates.chunks(256) {
+                let results = self
+                    .backend
+                    .update_refs(&id, batch)
+                    .await
+                    .map_err(backend_error)?;
+                if results.len() != batch.len()
+                    || results.iter().any(|result| result.rejection.is_some())
+                {
+                    return Err(busy());
+                }
+            }
         }
         Ok(())
     }

@@ -231,7 +231,7 @@ impl App {
     pub async fn run_lifecycle_once(&self) -> Result<(), ApiError> {
         let repositories = self
             .store
-            .deployment_lifecycle_repositories()
+            .deployment_lifecycle_repositories(self.clock.now_ms())
             .await
             .map_err(store_error)?;
         let mut error = None;

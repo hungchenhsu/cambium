@@ -97,11 +97,13 @@ pub trait CompactionStore: LifecycleStore {
     ) -> StoreResult<()>;
     /// Marks pre-switch work aborted and revokes copies; only before accepting requests.
     async fn deployment_recover_compactions(&self, now_ms: i64) -> StoreResult<()>;
-    async fn completed_compactions(
+    async fn claim_orphan_sweep(
         &self,
         tenant: &TenantId,
         repository: &RepositoryId,
-    ) -> StoreResult<Vec<CompactionRecord>>;
+        now_ms: i64,
+        next_ms: i64,
+    ) -> StoreResult<bool>;
     async fn mint_copy_token(
         &self,
         destination: &str,

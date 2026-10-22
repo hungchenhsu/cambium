@@ -89,5 +89,8 @@ pub trait LifecycleStore: OperationsStore {
         tenant: &TenantId,
         repository: &RepositoryId,
     ) -> StoreResult<Vec<String>>;
-    async fn deployment_lifecycle_repositories(&self) -> StoreResult<Vec<RepositoryRecord>>;
+    async fn deployment_lifecycle_repositories(
+        &self,
+        now_ms: i64,
+    ) -> StoreResult<Vec<RepositoryRecord>>;
 }

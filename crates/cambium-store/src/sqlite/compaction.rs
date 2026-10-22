@@ -310,14 +310,16 @@ impl CompactionStore for SqliteStore {
         tx.commit().await?;
         Ok(())
     }
-    async fn completed_compactions(
+    async fn claim_orphan_sweep(
         &self,
         tenant: &TenantId,
         repo: &RepositoryId,
-    ) -> StoreResult<Vec<CompactionRecord>> {
-        let rows = sqlx::query("SELECT * FROM compactions WHERE tenant_id = ? AND repository_id = ? AND completed_at_ms IS NOT NULL")
-            .bind(tenant.as_str()).bind(repo.as_str()).fetch_all(&self.readers).await?;
-        rows.iter().map(compaction).collect()
+        now_ms: i64,
+        next_ms: i64,
+    ) -> StoreResult<bool> {
+        let result = sqlx::query("UPDATE repositories SET orphan_sweep_after_ms = ?, updated_at_ms = ?, updated_by = 'idn_00000000000000000000000000', updated_by_kind = 'system' WHERE tenant_id = ? AND id = ? AND state = 'ready' AND orphan_sweep_after_ms <= ? AND EXISTS(SELECT 1 FROM compactions c WHERE c.tenant_id = repositories.tenant_id AND c.repository_id = repositories.id AND c.completed_at_ms IS NOT NULL)")
+            .bind(next_ms).bind(now_ms).bind(tenant.as_str()).bind(repo.as_str()).bind(now_ms).execute(&self.writer).await?;
+        Ok(result.rows_affected() == 1)
     }
     async fn mint_copy_token(
         &self,

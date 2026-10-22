@@ -57,7 +57,12 @@ compaction ID even if it finishes between attempts.
 
 Copies target hidden temporary refs under `refs/cambium/`; final active refs are
 changed with compare-and-swap. A late backend response cannot overwrite a newer
-active ref. Temporary refs are cleaned after completion and on later sweeps.
+active ref. Temporary refs are cleaned after completion and on later sweeps. Orphan discovery
+uses one prefix-filtered ref listing per repository at most once per minute,
+with its schedule persisted across restarts. It looks up only compaction IDs
+actually found in that listing, rather than scanning all historical records.
+Periodic discovery remains necessary because a previously admitted copy can
+land after an earlier cleanup.
 If the active ref moved independently, the late value is retained under
 `refs/cambium-rescue/<compaction-id>/<sha256-of-original-ref>/<object-id>`.
 Multiple late values receive separate refs. These are ordinary visible, fetchable
