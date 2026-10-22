@@ -13,13 +13,14 @@ Decisions and scaffolding before any code.
 - [x] Licensing ([ADR-0003](docs/adr/0003-licensing.md))
 - [x] Agent-first interface principles ([ADR-0004](docs/adr/0004-agent-first-interfaces.md))
 - [x] Internationalization ([ADR-0005](docs/adr/0005-internationalization.md))
-- [ ] Spike: run Enroute locally and check its quickstart, gRPC API, hooks, and limitations against the Phase 1a needs below. Record the results in an ADR.
-- [ ] ADR: storage backend interface and its conformance test suite
-- [ ] ADR: how git traffic is authorized (Enroute's hooks or a Cambium proxy)
-- [ ] ADR: reclaiming storage from expired ephemeral branches on Enroute, which reclaims storage only when a repository is deleted
-- [ ] ADR: Cambium's metadata store (SQLite first, then Postgres)
-- [ ] ADR: tenancy and authentication model
-- [ ] ADR: API transport and error code registry
+- [x] Spike: run Enroute locally and check its quickstart, gRPC API, hooks, and limitations against the Phase 1a needs below ([ADR-0006](docs/adr/0006-enroute-spike.md))
+- [x] Storage backend interface and its conformance test suite ([ADR-0007](docs/adr/0007-storage-backend-interface.md))
+- [x] How git traffic is authorized: Enroute's hooks, no proxy ([ADR-0008](docs/adr/0008-git-traffic-authorization.md))
+- [x] Reclaiming storage from expired ephemeral branches on Enroute, which reclaims storage only when a repository is deleted ([ADR-0009](docs/adr/0009-ephemeral-branch-reclamation.md))
+- [x] Cambium's metadata store, SQLite first, then Postgres ([ADR-0010](docs/adr/0010-metadata-store.md))
+- [x] Tenancy and authentication model ([ADR-0011](docs/adr/0011-tenancy-and-authentication.md))
+- [x] API transport and error code registry ([ADR-0012](docs/adr/0012-api-transport-and-errors.md))
+- [x] Durable seal before final reconciliation and deletion ([ADR-0013](docs/adr/0013-sealed-generation-reclamation.md))
 
 **Scaffolding**
 
@@ -38,9 +39,9 @@ Decisions and scaffolding before any code.
 - [x] Turn on GitHub Discussions for workload reports and design questions
 - [x] Dated comparison with existing projects ([docs/comparison.md](docs/comparison.md))
 - [ ] Publish the Code of Conduct contact email (replace the placeholder)
-- [ ] Protect `main`: require pull requests and the DCO check
-- [ ] Require sign-off on commits made in the GitHub web interface
-- [ ] Open a labelled issue for each open Phase 0 item, with the question, constraints, and acceptance criteria
+- [x] Protect `main`: require pull requests and the DCO check
+- [x] Require sign-off on commits made in the GitHub web interface
+- [x] Open a labelled issue for each open Phase 0 item, with the question, constraints, and acceptance criteria ([`phase-0` issues](https://github.com/hungchenhsu/cambium/issues?q=label%3Aphase-0))
 - [ ] Choose the final product name and run trademark, crates.io, and domain checks before public launch
 
 **Exit criteria:** every open ADR above is accepted, the workspace builds in CI, the license policy check is enforced, and every open-source readiness item is done.
