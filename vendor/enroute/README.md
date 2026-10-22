@@ -11,6 +11,12 @@ The [preparation script](../../scripts/prepare_enroute.py) verifies all three
 source boundaries: upstream HEAD, the exact staged patch, and absence of
 unstaged or untracked source changes. It never overwrites an existing directory.
 
+The `proto/` wire definitions and `signature.rs` are exact copies from that
+patched checkout (the signature source itself is unchanged from upstream).
+They retain this directory's Apache-2.0 license and NOTICE, with per-file hashes
+and original source paths in the manifest. The adapter compiles them directly;
+the preparation script also verifies their bytes against the pinned checkout.
+
 ```sh
 python3 scripts/prepare_enroute.py
 cd target/enroute

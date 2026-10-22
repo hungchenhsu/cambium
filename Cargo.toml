@@ -29,6 +29,17 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
 getrandom = "0.4"
 data-encoding = "2"
+prost = "0.14"
+prost-types = "0.14"
+tonic = { version = "0.14", features = ["transport"] }
+tonic-prost = "0.14"
+tonic-prost-build = "0.14"
+protox = "0.9"
+http = "1"
+ed25519-dalek = { version = "2", features = ["pem", "pkcs8"] }
+sfv = "0.14"
+url = "2"
+gix-validate = "0.13"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

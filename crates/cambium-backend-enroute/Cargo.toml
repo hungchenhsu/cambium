@@ -10,9 +10,30 @@ license = "AGPL-3.0-only"
 
 [dependencies]
 cambium-backend.workspace = true
+cambium-protocol.workspace = true
+async-trait.workspace = true
+prost.workspace = true
+prost-types.workspace = true
+tonic.workspace = true
+tonic-prost.workspace = true
+tokio.workspace = true
+sha1.workspace = true
+base64.workspace = true
+ed25519-dalek.workspace = true
+http.workspace = true
+sha2.workspace = true
+sfv.workspace = true
+thiserror.workspace = true
+url.workspace = true
+gix-validate.workspace = true
+
+[build-dependencies]
+protox.workspace = true
+tonic-prost-build.workspace = true
 
 [dev-dependencies]
 cambium-backend-conformance.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true

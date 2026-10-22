@@ -18,7 +18,8 @@ def git(directory: Path, *args: str) -> bytes:
     """Run Git with stable diff output and without local hooks."""
     result = subprocess.run(
         [
-            "git", "-c", "core.hooksPath=/dev/null", "-c", "core.quotePath=true",
+            "git", "-c", "core.hooksPath=/dev/null",
+            "-c", "core.quotePath=true",
             "-C", str(directory), *args,
         ],
         check=True,
@@ -32,13 +33,17 @@ def verify(destination: Path, upstream_commit: str, patch_hash: str) -> None:
     """Reject source drift, including staged or untracked code."""
     head = git(destination, "rev-parse", "HEAD").decode().strip()
     if head != upstream_commit:
-        raise ValueError("Enroute HEAD does not match the pinned upstream commit")
+        raise ValueError(
+            "Enroute HEAD does not match the pinned upstream commit"
+        )
     patch = git(
         destination, "diff", "--cached", "--binary", "--no-color",
         "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", "HEAD",
     )
     if hashlib.sha256(patch).hexdigest() != patch_hash:
-        raise ValueError("Enroute staged changes do not match the pinned patch")
+        raise ValueError(
+            "Enroute staged changes do not match the pinned patch"
+        )
     git(destination, "diff", "--exit-code", "--no-ext-diff")
     if git(destination, "ls-files", "--others", "--exclude-standard").strip():
         raise ValueError("Enroute source has unexpected untracked files")
@@ -50,7 +55,8 @@ def main() -> None:
         "--destination", type=Path, default=ROOT / "target" / "enroute",
     )
     parser.add_argument(
-        "--verify", action="store_true", help="Verify an existing prepared checkout",
+        "--verify", action="store_true",
+        help="Verify an existing prepared checkout",
     )
     args = parser.parse_args()
     manifest = tomllib.loads((VENDOR / "manifest.toml").read_text())
@@ -59,10 +65,18 @@ def main() -> None:
     patch_path = VENDOR / "durable-seal.patch"
     if hashlib.sha256(patch_path.read_bytes()).hexdigest() != patch_hash:
         raise ValueError("Cambium's Enroute patch checksum does not match")
+    for name, metadata in manifest.get("copied_sources", {}).items():
+        digest = hashlib.sha256((VENDOR / name).read_bytes()).hexdigest()
+        if digest != metadata["sha256"]:
+            raise ValueError(
+                f"Copied Enroute source checksum does not match: {name}"
+            )
     destination = args.destination.resolve()
     if not args.verify:
         if destination.exists():
-            raise ValueError("Destination exists; use --verify or a new directory")
+            raise ValueError(
+                "Destination exists; use --verify or a new directory"
+            )
         destination.mkdir(parents=True)
         git(destination, "init", "--quiet")
         git(destination, "config", "core.autocrlf", "false")
@@ -71,6 +85,12 @@ def main() -> None:
         git(destination, "checkout", "--detach", "--quiet", upstream_commit)
         git(destination, "apply", "--index", str(patch_path))
     verify(destination, upstream_commit, patch_hash)
+    for name, metadata in manifest.get("copied_sources", {}).items():
+        upstream_bytes = (destination / metadata["source"]).read_bytes()
+        if (VENDOR / name).read_bytes() != upstream_bytes:
+            raise ValueError(
+                f"Copied Enroute source differs from pinned checkout: {name}"
+            )
     print(f"Verified Enroute {manifest['version']}: {destination}")
 
 
@@ -82,4 +102,5 @@ if __name__ == "__main__":
             detail = error.stderr.decode(errors="replace").strip()
         else:
             detail = str(error)
-        raise SystemExit(f"Enroute source preparation failed: {detail}") from error
+        message = f"Enroute source preparation failed: {detail}"
+        raise SystemExit(message) from error

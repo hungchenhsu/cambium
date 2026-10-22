@@ -2,3 +2,35 @@ upstream_url = "https://github.com/enroute-sh/enroute.git"
 upstream_commit = "bc0dc6efce9cbbce9a5368e594a9b28f18a12d40"
 version = "0.3.0-cambium.1"
 patch_sha256 = "4d3668b2cab97ed6ecd96bb30fef7a13841f4ab63682fe3989c5886cac02e870"
+
+[copied_sources."signature.rs"]
+source = "crates/api/signature/src/lib.rs"
+sha256 = "5880f9397828b3113e3f1cafafdac050224a084fd86babeb2f78990d8530f9b8"
+
+[copied_sources."proto/enroute/api/v1alpha1/commit.proto"]
+source = "proto/enroute/api/v1alpha1/commit.proto"
+sha256 = "dc1b3eb9212b39a0a003e0436d36704e7a51a37a5d3c52e796aa7d5e56c250bd"
+
+[copied_sources."proto/enroute/api/v1alpha1/object.proto"]
+source = "proto/enroute/api/v1alpha1/object.proto"
+sha256 = "cb203b057ba72fe0f034aa88c406e89b026519884fad068ba3c43d9743034aa2"
+
+[copied_sources."proto/enroute/api/v1alpha1/ref.proto"]
+source = "proto/enroute/api/v1alpha1/ref.proto"
+sha256 = "9c630c6c5ab54b0f17d5aca5ce130d5439826d0014f97ba35dc5c64b6c3d0557"
+
+[copied_sources."proto/enroute/api/v1alpha1/repository.proto"]
+source = "proto/enroute/api/v1alpha1/repository.proto"
+sha256 = "67faf8953b8c96d7b939953ee39a4c1ba7448981972cf27f2a141132a1af56c8"
+
+[copied_sources."proto/enroute/api/v1alpha1/sync.proto"]
+source = "proto/enroute/api/v1alpha1/sync.proto"
+sha256 = "deafac9150e16823b3a5fe5aa199ac7d59e94c661682e12a70aa93c0f61356ab"
+
+[copied_sources."proto/enroute/common/v1alpha1/common.proto"]
+source = "proto/enroute/common/v1alpha1/common.proto"
+sha256 = "bf437ba8a8097f8b5f97943f1420d56b13f51ed354217ad0208d5d33cddec7b0"
+
+[copied_sources."proto/enroute/hook/v1alpha1/hook.proto"]
+source = "proto/enroute/hook/v1alpha1/hook.proto"
+sha256 = "a87ac887157c7d7a21d8cf6fef379564f9bb65acd7f345fa3e626d751338d384"
