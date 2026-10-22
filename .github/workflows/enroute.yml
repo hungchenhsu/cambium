@@ -1,0 +1,51 @@
+name: Enroute patch
+
+on:
+  pull_request:
+    paths:
+      - vendor/enroute/**
+      - scripts/prepare_enroute.py
+      - .github/workflows/enroute.yml
+  push:
+    branches: [main]
+    paths:
+      - vendor/enroute/**
+      - scripts/prepare_enroute.py
+      - .github/workflows/enroute.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  seal:
+    name: Enroute durable seal
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare the pinned upstream source and patch
+        run: python3 scripts/prepare_enroute.py
+      - name: Install Enroute's pinned toolchain
+        working-directory: target/enroute
+        run: rustup show
+      - name: Check formatting and lints
+        working-directory: target/enroute
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --locked -p enroute -p enroute-ledger -p enroute-compute -p enroute-shared --all-targets -- -D warnings
+      - name: Test replicated state, persistence, and real git writes
+        working-directory: target/enroute
+        run: |
+          cargo test --locked -p enroute-ledger --lib
+          cargo test --locked -p enroute-shared state::tests
+          cargo test --locked -p enroute --test seal
+          cargo test --locked -p enroute --test repos deleted_layer_files_are_reclaimed
+      - name: Verify source remained pinned
+        run: python3 scripts/prepare_enroute.py --verify

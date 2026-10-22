@@ -1,0 +1,2 @@
+# Unified patches contain a required context prefix on empty lines.
+vendor/enroute/*.patch whitespace=-blank-at-eol
