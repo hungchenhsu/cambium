@@ -251,6 +251,37 @@ index 08f22da..0b179b3 100644
                  | Refusal::Unspecified,
              )
              | None => {}
+diff --git a/crates/compute/src/lib.rs b/crates/compute/src/lib.rs
+index e55f4fd..8d054d9 100644
+--- a/crates/compute/src/lib.rs
++++ b/crates/compute/src/lib.rs
+@@ -1,3 +1,4 @@
++// Cambium modification: durable ref creation receipts (Apache-2.0).
+ //! The compute: the role that does the git work. Materialized repository
+ //! views, git formats (packs, deltas, objects), layer storage (local copies,
+ //! pages, the file formats), git traffic (smart HTTP, upload-pack,
+@@ -57,4 +58,21 @@ pub mod testing {
+     pub use crate::query::{Error, PushPack, pack_for_push};
+     pub use crate::remote_ledger::client;
+     pub use crate::storage::{Sealed, new_layer_id};
++
++    /// Replay a creation with a retained snapshot to test incarnation races.
++    ///
++    /// # Errors
++    ///
++    /// Returns the query's validation, incarnation, or storage error.
++    pub async fn create_ref_from_snapshot(
++        compute: &crate::Compute,
++        repo: &str,
++        snapshot: &crate::Snapshot,
++        operation_id: &str,
++        refname: &str,
++        object_id: enroute_shared::oid::Oid,
++    ) -> Result<bool, Error> {
++        crate::query::create_ref_once(compute, repo, snapshot, operation_id, refname, object_id)
++            .await
++    }
+ }
 diff --git a/crates/compute/src/maintenance/sweep.rs b/crates/compute/src/maintenance/sweep.rs
 index 0165136..848014a 100644
 --- a/crates/compute/src/maintenance/sweep.rs
@@ -287,7 +318,7 @@ index 0165136..848014a 100644
              .delete_objects([object_store::path::Path::from(path)])
              .await?;
 diff --git a/crates/compute/src/query.rs b/crates/compute/src/query.rs
-index 4813c20..9d7b20c 100644
+index 4813c20..8a3be0b 100644
 --- a/crates/compute/src/query.rs
 +++ b/crates/compute/src/query.rs
 @@ -1,3 +1,4 @@
@@ -321,7 +352,7 @@ index 4813c20..9d7b20c 100644
              Error::NotFound => f.write_str("no such repository"),
              Error::Missing(oid) => write!(f, "no object {oid}"),
              Error::WrongKind { oid, kind, role } => {
-@@ -155,6 +159,67 @@ pub(crate) struct RefOutcome {
+@@ -155,6 +159,66 @@ pub(crate) struct RefOutcome {
  /// keep moving.
  const UPDATE_ATTEMPTS: usize = 16;
  
@@ -345,19 +376,18 @@ index 4813c20..9d7b20c 100644
 +    {
 +        return Err(Error::Invalid("invalid ref creation request".into()));
 +    }
-+    if let Some(receipt) = snap.meta.ref_creation_receipts.get(operation_id) {
-+        if receipt.refname != refname || receipt.object_id != Some(object_id) {
-+            return Err(Error::Invalid("ref creation operation ID reused".into()));
++    // Replay through the ledger too: this snapshot may belong to a deleted
++    // incarnation. The command's epoch must be checked before any receipt.
++    if !snap.meta.ref_creation_receipts.contains_key(operation_id) {
++        if snap.meta.sealed {
++            return Err(Error::Sealed);
 +        }
-+        return Ok(receipt.rejection.is_none());
-+    }
-+    if snap.meta.sealed {
-+        return Err(Error::Sealed);
-+    }
-+    if refname::check_target(refname, snap.lookup(&object_id).map(|id| snap.kind(id))).is_err() {
-+        return Err(Error::Invalid(
-+            "ref target is missing or has the wrong type".into(),
-+        ));
++        if refname::check_target(refname, snap.lookup(&object_id).map(|id| snap.kind(id))).is_err()
++        {
++            return Err(Error::Invalid(
++                "ref target is missing or has the wrong type".into(),
++            ));
++        }
 +    }
 +    let out = compute
 +        .propose(
@@ -389,7 +419,7 @@ index 4813c20..9d7b20c 100644
  /// Apply `moves`, each on its own, in request order, without a pack or hooks.
  ///
  /// Updates of one ref see the updates before them, and every ref lands in one
-@@ -170,6 +235,9 @@ pub(crate) async fn update_refs(
+@@ -170,6 +234,9 @@ pub(crate) async fn update_refs(
      mut snap: Arc<Snapshot>,
      moves: &[RefMove],
  ) -> Result<Vec<RefOutcome>, Error> {
@@ -399,7 +429,7 @@ index 4813c20..9d7b20c 100644
      let mut decided: Vec<Option<RefRejection>> = vec![None; moves.len()];
      let mut pending: HashSet<&str> = moves.iter().map(|m| m.refname.as_str()).collect();
      for attempt in 0..UPDATE_ATTEMPTS {
-@@ -224,6 +292,9 @@ pub(crate) async fn update_refs(
+@@ -224,6 +291,9 @@ pub(crate) async fn update_refs(
              .commit(repo, snap.meta.epoch, None, commit)
              .await?
              .outcome;
@@ -1385,10 +1415,10 @@ index 157b4ff..fed3133 100644
 +message SealRepositoryResponse {}
 diff --git a/tests/seal.rs b/tests/seal.rs
 new file mode 100644
-index 0000000..9853e1c
+index 0000000..90566ea
 --- /dev/null
 +++ b/tests/seal.rs
-@@ -0,0 +1,403 @@
+@@ -0,0 +1,518 @@
 +// Cambium modification: durable repository seals (Apache-2.0).
 +//! Durable seals across the API and admitted git pushes.
 +
@@ -1788,6 +1818,121 @@ index 0000000..9853e1c
 +                .await
 +                .unwrap()
 +                .contains_key("refs/heads/topic")
++        );
++        server.node.shutdown().await;
++    }
++}
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
++async fn cached_ref_creation_receipts_cannot_cross_incarnations() {
++    for created in [false, true] {
++        let server = Server::start().await;
++        let mut client = server.api_client();
++        client.create_repo("incarnation").await.unwrap();
++        let tip = client
++            .create_commit(commit("incarnation", "main", "old", vec![put("a", "old")]))
++            .await
++            .unwrap()
++            .commit_id
++            .unwrap();
++        let mut refs = api::ref_service_client::RefServiceClient::connect(server.api.clone())
++            .await
++            .unwrap();
++        if !created {
++            refs.update_refs(api::UpdateRefsRequest {
++                repo: Some(key("incarnation")),
++                updates: vec![api::RefUpdate {
++                    refname: "refs/heads/topic".into(),
++                    old_object_id: None,
++                    new_object_id: Some(tip.clone()),
++                }],
++            })
++            .await
++            .unwrap();
++        }
++        let mut request = api::CreateRefOnceRequest {
++            repo: Some(key("incarnation")),
++            operation_id: "reused".into(),
++            refname: "refs/heads/topic".into(),
++            object_id: Some(tip.clone()),
++        };
++        assert_eq!(
++            refs.create_ref_once(request.clone())
++                .await
++                .unwrap()
++                .into_inner()
++                .created,
++            created
++        );
++        let compute = server.node.compute().unwrap();
++        let snapshot = compute
++            .repo_for_read("incarnation", true)
++            .await
++            .unwrap()
++            .unwrap()
++            .snapshot();
++        let mut repos =
++            api::repository_service_client::RepositoryServiceClient::connect(server.api.clone())
++                .await
++                .unwrap();
++        repos
++            .seal_repository(api::SealRepositoryRequest {
++                repo: Some(key("incarnation")),
++            })
++            .await
++            .unwrap();
++        assert_eq!(
++            refs.create_ref_once(request.clone())
++                .await
++                .unwrap()
++                .into_inner()
++                .created,
++            created
++        );
++        repos
++            .delete_repository(api::DeleteRepositoryRequest {
++                repo: Some(key("incarnation")),
++            })
++            .await
++            .unwrap();
++        client.create_repo("incarnation").await.unwrap();
++        let new_tip = client
++            .create_commit(commit("incarnation", "main", "new", vec![put("a", "new")]))
++            .await
++            .unwrap()
++            .commit_id
++            .unwrap();
++        let result = enroute_compute::testing::create_ref_from_snapshot(
++            compute,
++            "incarnation",
++            &snapshot,
++            "reused",
++            "refs/heads/topic",
++            enroute_shared::oid::Oid::from_hex(&tip.hex).unwrap(),
++        )
++        .await;
++        assert!(
++            matches!(result, Err(enroute_compute::testing::Error::NotFound)),
++            "stale receipt returned {result:?}"
++        );
++        assert!(
++            !client
++                .refs("incarnation")
++                .await
++                .unwrap()
++                .contains_key("refs/heads/topic")
++        );
++        request.object_id = Some(new_tip.clone());
++        assert!(
++            refs.create_ref_once(request)
++                .await
++                .unwrap()
++                .into_inner()
++                .created
++        );
++        assert_eq!(
++            client.refs("incarnation").await.unwrap()["refs/heads/topic"],
++            new_tip.hex
 +        );
 +        server.node.shutdown().await;
 +    }
