@@ -6,12 +6,24 @@ on:
       - vendor/enroute/**
       - scripts/prepare_enroute.py
       - .github/workflows/enroute.yml
+      - crates/cambium-backend-enroute/**
+      - crates/cambium-backend/**
+      - crates/cambium-backend-conformance/**
+      - crates/cambium-protocol/**
+      - Cargo.toml
+      - Cargo.lock
   push:
     branches: [main]
     paths:
       - vendor/enroute/**
       - scripts/prepare_enroute.py
       - .github/workflows/enroute.yml
+      - crates/cambium-backend-enroute/**
+      - crates/cambium-backend/**
+      - crates/cambium-backend-conformance/**
+      - crates/cambium-protocol/**
+      - Cargo.toml
+      - Cargo.lock
   workflow_dispatch:
 
 permissions:
@@ -47,5 +59,10 @@ jobs:
           cargo test --locked -p enroute-shared state::tests
           cargo test --locked -p enroute --test seal
           cargo test --locked -p enroute --test repos deleted_layer_files_are_reclaimed
+          cargo build --locked --bin enroute
+      - name: Test Cambium adapter against the patched backend
+        env:
+          ENROUTE_BIN: ${{ github.workspace }}/target/enroute/target/debug/enroute
+        run: cargo test --locked -p cambium-backend-enroute --test backend -- --ignored
       - name: Verify source remained pinned
         run: python3 scripts/prepare_enroute.py --verify

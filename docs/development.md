@@ -2,7 +2,8 @@
 
 The workspace includes API and backend contracts, a SQLite metadata store,
 token delegation and authorization, CI, license checks, and reusable git path
-fixtures. The network service and Enroute adapter are still in progress.
+fixtures. The Enroute adapter and signed-hook translation are implemented;
+the network service and generation lifecycle are still in progress.
 
 ## Prerequisites
 
@@ -32,7 +33,7 @@ The protocol crate validates typed IDs and byte-field pairs and owns the
 [error registry](api/errors.md). The backend crate defines object-safe storage
 and git policy traits, including the durable seal required by ADR-0013. The
 store crate implements SQLite migrations and tenant-scoped metadata and token
-operations. The `cambium` binary and Enroute adapter are the next Phase 1a work.
+operations. The `cambium` binary and shared operation layer are the next Phase 1a work.
 
 Server crates may use the Apache crates. Apache crates must not depend, directly
 or transitively, on AGPL crates. Inherit shared package settings and lints, but
@@ -114,7 +115,27 @@ script applies only that patch to a fresh checkout and verifies source drift.
 The [patch workflow](../.github/workflows/enroute.yml) tests replicated state,
 restart and snapshot persistence, real git writes racing with a seal, and
 storage reclamation of late uploads. This verifies the backend primitive;
-Cambium's generation lifecycle and adapter require their own integration tests.
+Cambium's generation lifecycle still requires its own integration tests.
+
+The adapter implements the storage operations and verifies every raw object's
+size and SHA-1. It uses the pinned protobuf sources and signature verifier.
+`GitPolicy` receives only ref names for visibility (the hook provides no object
+IDs), and receives Enroute's force classification for push commands. The hook
+adapter verifies signatures before decoding or invoking policy and refuses
+incomplete policy results. The service must still mount it and implement policy.
+
+Run the real adapter tests after building the patched backend:
+
+```sh
+ENROUTE_BIN="$PWD/target/enroute/target/debug/enroute" \
+  cargo test --locked -p cambium-backend-enroute --test backend -- --ignored
+```
+
+These tests start disposable, loopback-only Enroute processes. They cover
+lifecycle, ref expectations, changeset CAS, sealed reads and writes, copying
+from and into sealed repositories, and byte-exact reads of the full path corpus
+after stock-git push and backend copy. The patch workflow runs them in CI.
+They do not establish multi-tenant transport isolation or lifecycle reclamation.
 
 ## Metadata and authorization tests
 

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use cambium_protocol::ObjectId;
 
-use crate::{BackendRepositoryId, GitRef};
+use crate::BackendRepositoryId;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GitOperation {
@@ -36,6 +36,7 @@ pub struct GitCommand {
     pub name: String,
     pub old: Option<ObjectId>,
     pub new: Option<ObjectId>,
+    pub force: bool,
 }
 
 /// Policy failure must deny access. Adapter-specific wire types stay outside.
@@ -46,7 +47,7 @@ pub trait GitPolicy: Send + Sync {
         &self,
         context: &[u8],
         repository: &BackendRepositoryId,
-        refs: &[GitRef],
+        refs: &[String],
     ) -> Result<Vec<String>, GitDenial>;
     async fn pre_receive(
         &self,

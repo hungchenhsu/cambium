@@ -6,7 +6,7 @@ This file is the single source of truth for repository rules and the repository 
 
 - `cambium` is the code name for an open-source, agent-first layer for git repositories, written in Rust, over pluggable git storage engines (Enroute first). The final product name will be chosen before public launch.
 - **The gap it fills:** forges and object-storage git engines each cover part of what agent fleets need ([docs/comparison.md](docs/comparison.md)). Cambium combines the rest into one lifecycle over storage engines that can be swapped: tenant isolation, human and agent identities, ephemeral branches whose storage is reclaimed, an agent API and MCP server, provenance, and merge policy. Judge every scope decision against this gap. Do not rebuild what a storage backend already does well.
-- **Stage:** Phase 1a in progress. Protocol/backend contracts and the SQLite metadata and authorization store exist. The network service and Enroute adapter are not implemented yet. See `ROADMAP.md`.
+- **Stage:** Phase 1a in progress. Protocol/backend contracts, the SQLite metadata and authorization store, and the Enroute adapter with signed-hook translation exist. The network service and generation lifecycle are not implemented yet. See `ROADMAP.md`.
 - The repository is public. Contributions follow `CONTRIBUTING.md` and require a DCO sign-off.
 
 ## 2. Language
@@ -21,7 +21,7 @@ Everything committed to this repository is in English: code, comments, documenta
 - `docs/adr/`: architecture decision records, indexed in `docs/adr/README.md`. An accepted ADR's decision is never rewritten; a new ADR supersedes it, and only the old ADR's Status line changes.
 - `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`: community policies.
 - `.github/`: issue and pull request templates, `CODEOWNERS`, and the DCO workflow.
-- `crates/`: protocol, backend contracts, conformance fixtures, SQLite store, and Enroute/server scaffolds. Layout and boundaries: `docs/development.md`.
+- `crates/`: protocol, backend contracts, conformance fixtures, SQLite store, Enroute adapter, and server scaffold. Layout and boundaries: `docs/development.md`.
 - `scripts/check_licenses.py`, `deny*.toml`: workspace license boundaries and dependency allow-lists.
 - `LICENSE-APACHE`, `LICENSE-AGPL`: verbatim license texts. Never edit them. ADR-0003 says which license applies where.
 - `AGENTS.md`: thin adapter for other agents, plus the Codex review guidelines.
