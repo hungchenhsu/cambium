@@ -1,6 +1,6 @@
 # Contributing to Cambium
 
-Thank you for your interest in Cambium. The project is in Phase 0 ([ROADMAP.md](ROADMAP.md)): the design is being settled and there is no code yet. The most useful contributions right now are:
+Thank you for your interest in Cambium. The project is in Phase 0 ([ROADMAP.md](ROADMAP.md)): the architecture decisions and Rust workspace are in place, but no service runs yet. See [Development](docs/development.md) to build and verify the workspace. The most useful contributions right now are:
 
 - feedback on the [design decisions](docs/adr/README.md)
 - reports of real agent workloads that git hosting handles badly

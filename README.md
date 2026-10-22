@@ -1,6 +1,6 @@
 # cambium
 
-> **Code name, pre-alpha.** Cambium is in the design stage and has no code yet.
+> **Code name, pre-alpha.** Cambium has a Rust workspace and foundation tests, but no runnable service yet.
 > The final product name will be chosen before a public launch.
 
 [繁體中文](README.zh-TW.md)
@@ -49,6 +49,8 @@ Server-side history built on derived data comes in Phase 2. Mononoke publishes t
 3. **Review and merge policy.** Separate human and agent identities, approvals bound to commits, risk tiers, and policy hooks for external review tools.
 
 The full checklist is in [ROADMAP.md](ROADMAP.md). All design decisions: [docs/adr](docs/adr/README.md).
+
+To build and verify the Phase 0 workspace, see [Development](docs/development.md).
 
 ## Prior art
 

@@ -1,4 +1,4 @@
-# Judgment Overlay: cambium (last updated 2026-10-18)
+# Judgment Overlay: cambium (last updated 2026-10-23)
 
 Generic rules live in each agent's own global configuration. This file holds only cambium-specific judgment: caution domains, verification commands, permissions, and where lessons go.
 
@@ -16,7 +16,7 @@ When unsure, anything that could make written data unreadable, let one tenant re
 
 ## 2. Verification commands
 
-Verified 2026-10-18. There is no code yet, and the only CI check is the DCO workflow.
+The Phase 0 workspace pins Rust 1.99.1 and cargo-deny 0.20.2. CI includes the DCO workflow, Rust checks, and the license policy. See `docs/development.md` for prerequisites and evidence boundaries.
 
 | Change touches | Minimum verification | Source of truth |
 | --- | --- | --- |
@@ -26,8 +26,9 @@ Verified 2026-10-18. There is no code yet, and the only CI check is the DCO work
 | `README*.md` | Every translation states the same facts as `README.md`; links resolve | `README.md` |
 | `docs/`, `ROADMAP.md` | Links and paths resolve | n/a |
 | `.github/workflows/` | `actionlint` when available; third-party actions pinned to a full commit SHA | n/a |
-
-When the Cargo workspace is created, add rows for `cargo fmt`, `cargo clippy`, `cargo test`, and the license policy check, and record them in `CLAUDE.md` §4.
+| Rust workspace | `cargo fmt --all -- --check`; `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`; `cargo test --workspace --all-features --locked` | `.github/workflows/ci.yml` |
+| Crate licenses or dependencies | `python3 scripts/check_licenses.py` | ADR-0003, `deny.toml`, `deny-apache.toml` |
+| License checker or policy | `python3 -m unittest discover -s scripts/tests -v` plus the license check above | `scripts/tests/test_license_policy.py` |
 
 ## 3. Permissions
 

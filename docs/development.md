@@ -1,0 +1,103 @@
+# Development
+
+Phase 0 supplies a buildable workspace, CI, license checks, and reusable git path
+fixtures. It does not yet provide a running service or a backend implementation.
+
+## Prerequisites
+
+- Rust through rustup. `rust-toolchain.toml` pins **1.99.1**, including rustfmt and
+  Clippy. The workspace uses edition 2024 and resolver 3.
+- Python **3.11 or later**, using only the standard library for policy checks.
+- Git for the path corpus tests. Git **2.50 or later** is the project baseline
+  because Phase 1a's Enroute integration requires it (ADR-0002).
+- `cargo-deny` **0.20.2**: `cargo install --locked cargo-deny --version 0.20.2`.
+
+Run commands below from the repository root. Cargo uses the pinned toolchain
+automatically; `rustup show` installs it if necessary. Commit `Cargo.lock` when
+dependencies change. All crates have `publish = false` during scaffolding.
+
+## Workspace
+
+| Crate | License | Responsibility |
+| --- | --- | --- |
+| `cambium-protocol` | Apache-2.0 | API types and the error registry (ADR-0012) |
+| `cambium-backend` | Apache-2.0 | Backend and git policy contracts (ADR-0007) |
+| `cambium-backend-conformance` | Apache-2.0 | Shared fixtures and the future backend conformance suite |
+| `cambium-backend-enroute` | AGPL-3.0-only | Enroute adapter and hook translation (ADR-0006, ADR-0008) |
+| `cambium-store` | AGPL-3.0-only | Tenant-scoped metadata access and all SQL (ADR-0010) |
+| `cambium-server` | AGPL-3.0-only | Shared operation layer, then HTTP, MCP, and service composition |
+
+Only the conformance crate has behavior in Phase 0. The other crates establish
+the dependency boundaries; their types, traits, and implementations are Phase 1a
+work. The `cambium` binary will be added to `cambium-server` in Phase 1a.
+
+Server crates may use the Apache crates. Apache crates must not depend, directly
+or transitively, on AGPL crates. Inherit shared package settings and lints, but
+declare each crate's license explicitly so its boundary is visible in its own
+manifest. New workspace crates belong under `crates/`.
+
+## Verification
+
+```sh
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo test --workspace --all-features --locked
+python3 scripts/check_licenses.py
+python3 -m unittest discover -s scripts/tests -v
+git diff --check
+```
+
+The [CI workflow](../.github/workflows/ci.yml) runs Rust checks on Linux and macOS,
+and license checks on Linux. Run `actionlint` after changing workflows if it is
+available. CI is configured here; branch protection must separately require the
+new checks after their first successful GitHub run.
+
+## License policy
+
+Run `scripts/check_licenses.py`, not just `cargo deny check licenses`:
+
+1. Cargo metadata resolves every workspace member with all features and no target
+   filter. A structural check requires explicit Apache-2.0 or AGPL-3.0-only
+   licenses and rejects transitive Apache-to-AGPL workspace dependencies.
+2. `cargo-deny` checks the complete workspace with [deny.toml](../deny.toml), which
+   allows permissive and explicitly listed AGPL-compatible dependencies.
+3. Each Apache crate is then checked as a graph root with
+   [deny-apache.toml](../deny-apache.toml), which allows only the listed permissive
+   licenses. SPDX expressions are evaluated by cargo-deny, including `OR` and
+   `AND`; they are not parsed by a custom license parser.
+
+Both passes include build and dev dependencies and unpublished crates. No target
+filter is used, so another platform's dependency is still checked. The checker
+does not skip optional dependencies. `--offline` is available after
+`cargo fetch --locked` has downloaded dependencies for **all** targets.
+
+The policy tests construct local fixture workspaces and execute the actual
+checker. They cover missing licenses, forbidden direct and indirect dependencies,
+optional and target-specific dependencies, build and dev dependencies, rejected
+third-party licenses, and an allowed permissive alternative in a dual license.
+
+Adding a license to either allow-list requires checking it against
+[ADR-0003](adr/0003-licensing.md). An unlisted license fails closed. These checks
+cannot establish the provenance of copied source; the ADR's no-copyleft-copying
+rule still applies. The graph-root behavior is documented in
+[cargo-deny's common options](https://embarkstudios.github.io/cargo-deny/cli/common.html),
+and license expression handling in its
+[license configuration](https://embarkstudios.github.io/cargo-deny/checks/licenses/cfg.html).
+
+## Path corpus
+
+[paths.rs](../crates/cambium-backend-conformance/src/paths.rs) stores paths as byte
+slices, paired with exact blob contents and git modes. It contains invalid UTF-8,
+NFC and NFD forms of the same name, a case collision, CJK, tab/newline characters,
+nested paths, an executable, and a symbolic link.
+
+The integration test creates a bare SHA-1 repository in a temporary directory,
+writes blobs and an index through git plumbing, and compares a NUL-delimited tree
+listing with the original bytes. It verifies blob contents and modes, hashes the
+raw tree, and rebuilds the tree to verify the object ID is unchanged. It never
+checks paths out onto the host filesystem, where normalization or case folding
+could erase the very cases under test. No developer repository is modified.
+
+These are reusable input fixtures and a stock-git round trip, not evidence of
+Enroute conformance, Cambium path parsing, or backend migration correctness.
+Those checks belong to the implementations described in ADR-0007.

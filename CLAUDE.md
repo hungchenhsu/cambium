@@ -6,7 +6,7 @@ This file is the single source of truth for repository rules and the repository 
 
 - `cambium` is the code name for an open-source, agent-first layer for git repositories, written in Rust, over pluggable git storage engines (Enroute first). The final product name will be chosen before public launch.
 - **The gap it fills:** forges and object-storage git engines each cover part of what agent fleets need ([docs/comparison.md](docs/comparison.md)). Cambium combines the rest into one lifecycle over storage engines that can be swapped: tenant isolation, human and agent identities, ephemeral branches whose storage is reclaimed, an agent API and MCP server, provenance, and merge policy. Judge every scope decision against this gap. Do not rebuild what a storage backend already does well.
-- **Stage:** Phase 0 (foundations). There is no code yet. See `ROADMAP.md`.
+- **Stage:** Phase 0 (foundations). The Rust workspace, CI, license checks, and path corpus exist; no service runs yet. See `ROADMAP.md`.
 - The repository is public. Contributions follow `CONTRIBUTING.md` and require a DCO sign-off.
 
 ## 2. Language
@@ -21,13 +21,24 @@ Everything committed to this repository is in English: code, comments, documenta
 - `docs/adr/`: architecture decision records, indexed in `docs/adr/README.md`. An accepted ADR's decision is never rewritten; a new ADR supersedes it, and only the old ADR's Status line changes.
 - `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`: community policies.
 - `.github/`: issue and pull request templates, `CODEOWNERS`, and the DCO workflow.
+- `crates/`: protocol, backend contracts, conformance fixtures, Enroute adapter, store, and server scaffolds. Layout and boundaries: `docs/development.md`.
+- `scripts/check_licenses.py`, `deny*.toml`: workspace license boundaries and dependency allow-lists.
 - `LICENSE-APACHE`, `LICENSE-AGPL`: verbatim license texts. Never edit them. ADR-0003 says which license applies where.
 - `AGENTS.md`: thin adapter for other agents, plus the Codex review guidelines.
 - `.claude/judgment-overlay.md`: caution domains, verification commands, permissions, and where lessons go.
 
 ## 4. Environment
 
-No Cargo workspace exists yet. When it is created (ROADMAP Phase 0), record here the pinned toolchain, the workspace layout, and the verification commands. Add the commands to the overlay as well.
+Rust **1.99.1** is pinned in `rust-toolchain.toml` (edition 2024, resolver 3). All crates live under `crates/`; `docs/development.md` records their responsibilities and license boundaries. Python 3.11+, Git 2.50+, and cargo-deny 0.20.2 are required for the checks.
+
+```sh
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo test --workspace --all-features --locked
+python3 scripts/check_licenses.py
+python3 -m unittest discover -s scripts/tests -v
+git diff --check
+```
 
 ## 5. Project rules
 
