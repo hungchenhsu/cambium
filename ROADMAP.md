@@ -20,6 +20,7 @@ Decisions and scaffolding before any code.
 - [x] Cambium's metadata store, SQLite first, then Postgres ([ADR-0010](docs/adr/0010-metadata-store.md))
 - [x] Tenancy and authentication model ([ADR-0011](docs/adr/0011-tenancy-and-authentication.md))
 - [x] API transport and error code registry ([ADR-0012](docs/adr/0012-api-transport-and-errors.md))
+- [x] Durable seal before final reconciliation and deletion ([ADR-0013](docs/adr/0013-sealed-generation-reclamation.md))
 
 **Scaffolding**
 
