@@ -183,6 +183,7 @@ pub struct Diff {
 #[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateIdentity {
+    #[schemars(with = "PublicIdentityKind")]
     pub kind: IdentityKind,
     pub name: String,
     pub owner_id: Option<IdentityId>,
@@ -208,4 +209,24 @@ pub struct MintToken {
 #[serde(deny_unknown_fields)]
 pub struct Token {
     pub token_id: TokenId,
+}
+
+/// System actors are internal and cannot be created through an operation.
+#[derive(schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum PublicIdentityKind {
+    Human,
+    Agent,
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn create_identity_schema_only_advertises_public_kinds() {
+        let schema = serde_json::to_value(schemars::schema_for!(super::CreateIdentity)).unwrap();
+        assert_eq!(
+            schema["$defs"]["PublicIdentityKind"]["enum"],
+            serde_json::json!(["human", "agent"])
+        );
+    }
 }
