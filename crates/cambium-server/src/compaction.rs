@@ -25,6 +25,13 @@ pub struct CompactionSettings {
     pub settle_ms: i64,
     pub drain_ms: i64,
 }
+
+#[derive(Serialize, Deserialize)]
+struct PendingRef {
+    name: String,
+    expected: Option<ObjectId>,
+    value: Option<ObjectId>,
+}
 impl Default for CompactionSettings {
     fn default() -> Self {
         Self {
@@ -249,7 +256,9 @@ impl App {
         let old = backend(record.old_backend_id())?;
         let new = backend(record.new_backend_id())?;
         if record.state["needs_cleanup"] == true {
-            self.complete_rescues(record, &new).await?;
+            let sealed = matches!(record.stage.as_str(), "sealed" | "deleting");
+            self.complete_pending_ref(record, sealed).await?;
+            self.complete_rescues(record, sealed).await?;
             self.clean_temporary(
                 record,
                 &old,
@@ -354,6 +363,10 @@ impl App {
                 if now.saturating_sub(millis(&record.state, "switched_at_ms")?)
                     >= self.compaction.drain_ms
                 {
+                    // Historical intents may need an anchor in the writable old
+                    // generation after its public ref has moved again.
+                    self.complete_pending_ref(record, false).await?;
+                    self.complete_rescues(record, false).await?;
                     record.stage = "sealing".into();
                     self.store
                         .save_compaction(record, now)
@@ -632,10 +645,19 @@ impl App {
     async fn reconcile(&self, record: &mut CompactionRecord, sealed: bool) -> Result<(), ApiError> {
         let old = backend(record.old_backend_id())?;
         let new = backend(record.new_backend_id())?;
-        self.complete_rescues(record, &new).await?;
+        self.complete_pending_ref(record, sealed).await?;
+        self.complete_rescues(record, sealed).await?;
         let snapshot: RefSnapshot = serde_json::from_value(record.state["switch_snapshot"].clone())
             .map_err(|_| internal())?;
         let before = map(&snapshot);
+        let applied: BTreeMap<String, Option<ObjectId>> = serde_json::from_value(
+            record
+                .state
+                .get("applied_refs")
+                .cloned()
+                .unwrap_or(json!({})),
+        )
+        .map_err(|_| internal())?;
         let current_old = map(&filtered(
             self.backend
                 .list_refs(&old, &[])
@@ -643,155 +665,248 @@ impl App {
                 .map_err(backend_error)?,
         ));
         let skipped = self.skip_old_names(record).await?;
-        let names: BTreeSet<_> = before.keys().chain(current_old.keys()).cloned().collect();
+        let names: BTreeSet<_> = before
+            .keys()
+            .chain(current_old.keys())
+            .chain(applied.keys())
+            .cloned()
+            .collect();
         for name in names {
             let old_value = current_old.get(&name);
-            let snapshot_value = before.get(&name);
-            if old_value == snapshot_value || skipped.contains(&name) {
+            let baseline = applied
+                .get(&name)
+                .map(Option::as_ref)
+                .unwrap_or_else(|| before.get(&name));
+            if old_value == baseline || skipped.contains(&name) {
                 continue;
             }
-            let mut done = false;
-            for _ in 0..16 {
-                let active = self
-                    .backend
-                    .list_refs(&new, std::slice::from_ref(&name))
+            let active = self.ref_value(&new, &name).await?;
+            // Apply from our last successful value before checking ancestry: an
+            // old-side rollback or deletion must undo our earlier application.
+            if active.as_ref() == baseline {
+                record.state["pending_ref"] = json!(PendingRef {
+                    name,
+                    expected: baseline.cloned(),
+                    value: old_value.cloned(),
+                });
+                self.store
+                    .save_compaction(record, self.clock.now_ms())
                     .await
-                    .map_err(backend_error)?
-                    .refs
-                    .into_iter()
-                    .find(|r| r.name == name)
-                    .map(|r| r.object_id);
-                if active.as_ref() == old_value {
-                    done = true;
-                    break;
-                }
-                if let (Some(old_value), Some(active)) = (old_value, active.as_ref()) {
-                    let old_kind = self
-                        .backend
-                        .read_object(&old, old_value)
-                        .await
-                        .map_err(backend_error)?
-                        .kind;
-                    let active_kind = self
-                        .backend
-                        .read_object(&new, active)
-                        .await
-                        .map_err(backend_error)?
-                        .kind;
-                    if old_kind == ObjectKind::Commit
-                        && active_kind == ObjectKind::Commit
-                        && self
-                            .backend
-                            .is_ancestor(&new, old_value, active)
-                            .await
-                            .map_err(backend_error)?
-                    {
-                        done = true;
-                        break;
-                    }
-                }
-                if active.as_ref() == snapshot_value {
-                    if let Some(oid) = old_value {
-                        self.copy_value(record, &old, &new, &name, oid, sealed)
-                            .await?;
-                    }
-                    let expected = snapshot_value
-                        .cloned()
-                        .map(RefExpectation::At)
-                        .unwrap_or(RefExpectation::Absent);
-                    match self
-                        .cas_ref(&new, &name, expected, old_value.cloned())
-                        .await
-                    {
-                        Ok(()) => {
-                            done = true;
-                            break;
-                        }
-                        Err(error) if error.code == ErrorCode::RepositoryBusy => continue,
-                        Err(error) => return Err(error),
-                    }
-                } else {
-                    let rescue = if let Some(oid) = old_value {
-                        self.copy_value(record, &old, &new, &name, oid, sealed)
-                            .await?;
-                        Some(format!(
-                            "refs/cambium-rescue/{}/{}/{}",
-                            record.id,
-                            digest(&name),
-                            oid
-                        ))
-                    } else {
-                        None
-                    };
-                    let mut conflict = json!({"ref": name});
-                    if let Some(oid) = old_value {
-                        conflict["old_value"] = json!(oid);
-                    }
-                    if let Some(oid) = &active {
-                        conflict["active_value"] = json!(oid);
-                    }
-                    if let Some(rescue) = rescue {
-                        conflict["rescue_ref"] = json!(rescue);
-                    }
-                    if !record.state["conflicts"].is_array() {
-                        record.state["conflicts"] = json!([]);
-                    }
-                    let conflicts = record.state["conflicts"]
-                        .as_array_mut()
-                        .ok_or_else(internal)?;
-                    if !conflicts.iter().any(|c| {
-                        c["ref"] == conflict["ref"]
-                            && c.get("old_value") == conflict.get("old_value")
-                    }) {
-                        conflicts.push(conflict);
-                        // Persist the rescue intent before its ref mutation. Recovery
-                        // completes it even if the old ref later changes again.
-                        self.store
-                            .save_compaction(record, self.clock.now_ms())
-                            .await
-                            .map_err(store_error)?;
-                        eprintln!(
-                            "cambium: reconciliation conflict in {} ({})",
-                            record.repository_id, record.id
-                        );
-                    }
-                    self.complete_rescues(record, &new).await?;
-                    done = true;
-                    break;
-                }
-            }
-            if !done {
-                return Err(busy());
+                    .map_err(store_error)?;
+                self.complete_pending_ref(record, sealed).await?;
+            } else if !self
+                .value_retained(&old, &new, old_value, active.as_ref())
+                .await?
+            {
+                self.preserve_conflict(record, &name, old_value, active.as_ref(), sealed)
+                    .await?;
             }
         }
         Ok(())
     }
 
+    async fn ref_value(
+        &self,
+        repository: &BackendRepositoryId,
+        name: &str,
+    ) -> Result<Option<ObjectId>, ApiError> {
+        Ok(self
+            .backend
+            .list_refs(repository, &[name.into()])
+            .await
+            .map_err(backend_error)?
+            .refs
+            .into_iter()
+            .find(|r| r.name == name)
+            .map(|r| r.object_id))
+    }
+
+    async fn value_retained(
+        &self,
+        old: &BackendRepositoryId,
+        new: &BackendRepositoryId,
+        value: Option<&ObjectId>,
+        active: Option<&ObjectId>,
+    ) -> Result<bool, ApiError> {
+        if value == active {
+            return Ok(true);
+        }
+        let (Some(value), Some(active)) = (value, active) else {
+            return Ok(false);
+        };
+        let old_kind = self
+            .backend
+            .read_object(old, value)
+            .await
+            .map_err(backend_error)?
+            .kind;
+        let active_kind = self
+            .backend
+            .read_object(new, active)
+            .await
+            .map_err(backend_error)?
+            .kind;
+        if old_kind != ObjectKind::Commit || active_kind != ObjectKind::Commit {
+            return Ok(false);
+        }
+        self.backend
+            .is_ancestor(new, value, active)
+            .await
+            .map_err(backend_error)
+    }
+
+    async fn complete_pending_ref(
+        &self,
+        record: &mut CompactionRecord,
+        sealed: bool,
+    ) -> Result<(), ApiError> {
+        let Some(pending) = record.state.get("pending_ref") else {
+            return Ok(());
+        };
+        let pending: PendingRef =
+            serde_json::from_value(pending.clone()).map_err(|_| internal())?;
+        let old = backend(record.old_backend_id())?;
+        let new = backend(record.new_backend_id())?;
+        // An expired owner must not affect a new branch reusing the same name.
+        if self.skip_old_names(record).await?.contains(&pending.name) {
+            record
+                .state
+                .as_object_mut()
+                .ok_or_else(internal)?
+                .remove("pending_ref");
+            return self
+                .store
+                .save_compaction(record, self.clock.now_ms())
+                .await
+                .map_err(store_error);
+        }
+        for _ in 0..16 {
+            let active = self.ref_value(&new, &pending.name).await?;
+            let applied = if active == pending.value {
+                // The CAS may have committed before its response or metadata save
+                // was lost. The durable intent identifies its resulting baseline.
+                true
+            } else if active == pending.expected {
+                if let Some(oid) = &pending.value {
+                    self.copy_value(record, &old, &new, &pending.name, oid, sealed)
+                        .await?;
+                }
+                let expected = pending
+                    .expected
+                    .clone()
+                    .map(RefExpectation::At)
+                    .unwrap_or(RefExpectation::Absent);
+                match self
+                    .cas_ref(&new, &pending.name, expected, pending.value.clone())
+                    .await
+                {
+                    Ok(()) => true,
+                    Err(error) if error.code == ErrorCode::RepositoryBusy => continue,
+                    Err(error) => return Err(error),
+                }
+            } else {
+                if !self
+                    .value_retained(&old, &new, pending.value.as_ref(), active.as_ref())
+                    .await?
+                {
+                    self.preserve_conflict(
+                        record,
+                        &pending.name,
+                        pending.value.as_ref(),
+                        active.as_ref(),
+                        sealed,
+                    )
+                    .await?;
+                }
+                false
+            };
+            if applied {
+                if !record.state["applied_refs"].is_object() {
+                    record.state["applied_refs"] = json!({});
+                }
+                record.state["applied_refs"][&pending.name] = json!(pending.value);
+            }
+            record
+                .state
+                .as_object_mut()
+                .ok_or_else(internal)?
+                .remove("pending_ref");
+            self.store
+                .save_compaction(record, self.clock.now_ms())
+                .await
+                .map_err(store_error)?;
+            return Ok(());
+        }
+        Err(busy())
+    }
+
+    async fn preserve_conflict(
+        &self,
+        record: &mut CompactionRecord,
+        name: &str,
+        old_value: Option<&ObjectId>,
+        active: Option<&ObjectId>,
+        sealed: bool,
+    ) -> Result<(), ApiError> {
+        let mut conflict = json!({"ref": name});
+        if let Some(oid) = old_value {
+            conflict["old_value"] = json!(oid);
+            conflict["rescue_ref"] = json!(format!(
+                "refs/cambium-rescue/{}/{}/{}",
+                record.id,
+                digest(name),
+                oid
+            ));
+        }
+        if let Some(oid) = active {
+            conflict["active_value"] = json!(oid);
+        }
+        if !record.state["conflicts"].is_array() {
+            record.state["conflicts"] = json!([]);
+        }
+        let conflicts = record.state["conflicts"]
+            .as_array_mut()
+            .ok_or_else(internal)?;
+        if !conflicts
+            .iter()
+            .any(|c| c["ref"] == conflict["ref"] && c.get("old_value") == conflict.get("old_value"))
+        {
+            conflicts.push(conflict);
+            // Persist before the first backend mutation, including temporary copies.
+            self.store
+                .save_compaction(record, self.clock.now_ms())
+                .await
+                .map_err(store_error)?;
+            eprintln!(
+                "cambium: reconciliation conflict in {} ({})",
+                record.repository_id, record.id
+            );
+        }
+        self.complete_rescues(record, sealed).await
+    }
+
     async fn complete_rescues(
         &self,
         record: &CompactionRecord,
-        new: &BackendRepositoryId,
+        sealed: bool,
     ) -> Result<(), ApiError> {
+        let old = backend(record.old_backend_id())?;
+        let new = backend(record.new_backend_id())?;
         for conflict in record.state["conflicts"].as_array().into_iter().flatten() {
             let Some(name) = conflict.get("rescue_ref").and_then(Value::as_str) else {
                 continue;
             };
             let oid: ObjectId =
                 serde_json::from_value(conflict["old_value"].clone()).map_err(|_| internal())?;
-            let existing = self
-                .backend
-                .list_refs(new, &[name.into()])
-                .await
-                .map_err(backend_error)?
-                .refs
-                .into_iter()
-                .find(|r| r.name == name);
-            if let Some(existing) = existing {
-                if existing.object_id != oid {
+            if let Some(existing) = self.ref_value(&new, name).await? {
+                if existing != oid {
                     return Err(internal());
                 }
             } else {
-                self.cas_ref(new, name, RefExpectation::Absent, Some(oid))
+                let original = conflict["ref"].as_str().ok_or_else(internal)?;
+                self.copy_value(record, &old, &new, original, &oid, sealed)
+                    .await?;
+                self.cas_ref(&new, name, RefExpectation::Absent, Some(oid))
                     .await?;
             }
         }

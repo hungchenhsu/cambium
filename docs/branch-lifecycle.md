@@ -69,6 +69,12 @@ Multiple late values receive separate refs. These are ordinary visible, fetchabl
 refs but clients cannot write them. A conflicting deletion is recorded without
 inventing a value. See [ADR-0016](adr/0016-multiple-rescue-values.md).
 
+Each ref's reconciliation baseline advances after a successful CAS, including
+deletions. This carries subsequent old-generation rollbacks and removals into
+the active generation when no independent writer has changed it. A pending
+intent saved before the CAS recovers that baseline after a lost response or
+restart. See [ADR-0017](adr/0017-durable-reconciliation-progress.md).
+
 `get_reclamation` reports `active_generation`, `fenced`, `unreclaimed_expiries`,
 `oldest_expiry_at` when present, `overdue`, and the latest `compaction`. Its
 conflict entries map original refs and old/active values to rescue refs. Follow
@@ -86,8 +92,9 @@ Startup revokes internal copy credentials. It aborts any pre-switch compaction,
 seals and deletes its abandoned destination, releases the old write fence, and
 never reuses that generation number. This avoids trusting copies whose outcome
 was lost when the process stopped. A post-switch compaction resumes draining,
-sealing, final reconciliation, or deletion. Rescue intents are durable before
-their refs are created and complete before temporary refs are cleaned.
+sealing, final reconciliation, or deletion. Ref-update and rescue intents are
+durable before any backend mutation, including temporary copies. Pending work
+completes before temporary refs are cleaned or the old generation is sealed.
 
 Internal copy tokens expire after two minutes, bind one compaction and destination,
 and are revoked after each copy, including failures. They cannot authenticate to

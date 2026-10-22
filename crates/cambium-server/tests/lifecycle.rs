@@ -37,6 +37,8 @@ struct FaultBackend {
     lose_seal_response: AtomicBool,
     fail_delete: AtomicBool,
     lose_copy_response: AtomicBool,
+    lose_ref_response: AtomicBool,
+    block_after_copy: AtomicBool,
     stale_cas_once: AtomicBool,
     fail_rescue_for: std::sync::Mutex<Option<ObjectId>>,
     block_copy: AtomicBool,
@@ -174,7 +176,15 @@ impl Backend for FaultBackend {
                 )
                 .await?;
         }
-        self.backend.update_refs(id, updates).await
+        let result = self.backend.update_refs(id, updates).await?;
+        if updates
+            .iter()
+            .any(|update| update.name == "refs/heads/main")
+            && self.lose_ref_response.swap(false, Ordering::SeqCst)
+        {
+            return Err(BackendError::Unavailable);
+        }
+        Ok(result)
     }
     async fn read_object(
         &self,
@@ -220,6 +230,10 @@ impl Backend for FaultBackend {
         self.backend
             .copy_refs(source, destination, copies, atomic)
             .await?;
+        if self.block_after_copy.swap(false, Ordering::SeqCst) {
+            self.copy_admitted.notify_one();
+            self.copy_release.notified().await;
+        }
         if self.lose_copy_response.swap(false, Ordering::SeqCst) {
             return Err(BackendError::Unavailable);
         }
@@ -260,6 +274,8 @@ async fn ephemeral_ownership_survives_lost_replies_expiry_and_name_reuse() {
         lose_seal_response: AtomicBool::new(false),
         fail_delete: AtomicBool::new(false),
         lose_copy_response: AtomicBool::new(false),
+        lose_ref_response: AtomicBool::new(false),
+        block_after_copy: AtomicBool::new(false),
         stale_cas_once: AtomicBool::new(false),
         fail_rescue_for: std::sync::Mutex::new(None),
         block_copy: AtomicBool::new(false),
@@ -1115,6 +1131,8 @@ fn faults(backend: cambium_backend_enroute::EnrouteBackend) -> Arc<FaultBackend>
         lose_seal_response: AtomicBool::new(false),
         fail_delete: AtomicBool::new(false),
         lose_copy_response: AtomicBool::new(false),
+        lose_ref_response: AtomicBool::new(false),
+        block_after_copy: AtomicBool::new(false),
         stale_cas_once: AtomicBool::new(false),
         fail_rescue_for: std::sync::Mutex::new(None),
         block_copy: AtomicBool::new(false),
@@ -2171,5 +2189,301 @@ async fn orphan_sweeps_are_bounded_and_still_remove_late_temporary_refs() {
             .unwrap()
             .refs
             .is_empty()
+    );
+}
+
+struct ReconciliationFixture {
+    server: common::Server,
+    directory: tempfile::TempDir,
+    store: Arc<SqliteStore>,
+    clock: Arc<TestClock>,
+    backend: Arc<FaultBackend>,
+    app: Arc<App>,
+    token: String,
+    repo: Value,
+    old: BackendRepositoryId,
+    new: BackendRepositoryId,
+    base: ObjectId,
+}
+
+impl ReconciliationFixture {
+    async fn start() -> Self {
+        let server = common::Server::start().await;
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(
+            SqliteStore::open(
+                directory.path().join("metadata.sqlite"),
+                TokenSettings::default(),
+            )
+            .await
+            .unwrap(),
+        );
+        let clock = Arc::new(TestClock(AtomicI64::new(NOW)));
+        let backend = faults(server.backend.clone());
+        let mut app = App::new(
+            store.clone(),
+            backend.clone(),
+            clock.clone(),
+            &[12; 32],
+            server.git.clone(),
+        );
+        app.compaction.drain_ms = 1000;
+        app.compaction.settle_ms = 1;
+        let app = Arc::new(app);
+        let token = new_token().unwrap();
+        let principal = store
+            .deployment_bootstrap(
+                &Bootstrap {
+                    tenant_slug: "reconcile-regression".into(),
+                    human_name: "Operator".into(),
+                    token_hash: token_hash(&token).unwrap(),
+                    expires_at_ms: NOW + 86_400_000,
+                },
+                NOW,
+            )
+            .await
+            .unwrap();
+        let repo = success(
+            call(
+                &app,
+                &token,
+                "create_repository",
+                json!({"name": "project"}),
+            )
+            .await,
+        )["repository_id"]
+            .clone();
+        let base: ObjectId = serde_json::from_value(success(call(&app, &token, "write_changeset", json!({"repository_id": repo, "message": "base", "changes": [{"action": "put", "path": "base", "contents": "retained"}]})).await)["commit_id"].clone()).unwrap();
+        let old = format!("{}/{}/g1", principal.tenant_id, repo.as_str().unwrap())
+            .try_into()
+            .unwrap();
+        let new = format!("{}/{}/g2", principal.tenant_id, repo.as_str().unwrap())
+            .try_into()
+            .unwrap();
+        success(
+            call(
+                &app,
+                &token,
+                "request_compaction",
+                json!({"repository_id": repo}),
+            )
+            .await,
+        );
+        for _ in 0..4 {
+            app.run_lifecycle_once().await.unwrap();
+        }
+        Self {
+            server,
+            directory,
+            store,
+            clock,
+            backend,
+            app,
+            token,
+            repo,
+            old,
+            new,
+            base,
+        }
+    }
+
+    async fn write_old(&self, message: &str) -> ObjectId {
+        let identity = GitIdentity {
+            name: "Old writer".into(),
+            email: "test@example.invalid".into(),
+            timestamp_seconds: NOW / 1000,
+            utc_offset_seconds: 0,
+        };
+        self.server
+            .backend
+            .update_refs(
+                &self.old,
+                &[RefUpdate {
+                    name: "refs/heads/main".into(),
+                    expected: RefExpectation::Any,
+                    new: Some(self.base.clone()),
+                }],
+            )
+            .await
+            .unwrap();
+        self.server
+            .backend
+            .create_commit(
+                &self.old,
+                &CommitRequest {
+                    branch: "refs/heads/main".into(),
+                    expected_parent: Some(self.base.clone()),
+                    message: message.into(),
+                    author: identity.clone(),
+                    committer: identity,
+                    changes: vec![FileChange::Put {
+                        path: b"late".to_vec(),
+                        contents: message.as_bytes().to_vec(),
+                        mode: FileMode::Regular,
+                    }],
+                },
+            )
+            .await
+            .unwrap()
+            .commit_id
+    }
+
+    async fn restart(&mut self) {
+        self.store = Arc::new(
+            SqliteStore::open(
+                self.directory.path().join("metadata.sqlite"),
+                TokenSettings::default(),
+            )
+            .await
+            .unwrap(),
+        );
+        let mut app = App::new(
+            self.store.clone(),
+            self.backend.clone(),
+            self.clock.clone(),
+            &[12; 32],
+            self.server.git.clone(),
+        );
+        app.compaction.drain_ms = 1000;
+        app.compaction.settle_ms = 1;
+        self.app = Arc::new(app);
+        self.app.recover_at_startup().await.unwrap();
+    }
+
+    async fn finish(&self) {
+        self.clock.0.store(NOW + 2000, Ordering::SeqCst);
+        for _ in 0..4 {
+            self.app.run_lifecycle_once().await.unwrap();
+        }
+        assert!(matches!(
+            self.server.backend.list_refs(&self.old, &[]).await,
+            Err(BackendError::RepositoryNotFound)
+        ));
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires ENROUTE_BIN pointing to the pinned patched backend"]
+async fn reconciliation_regression_restores_snapshot_and_removes_late_creation() {
+    for lose_reply in [false, true] {
+        let mut fixture = ReconciliationFixture::start().await;
+        let late = fixture.write_old("first late value").await;
+        fixture
+            .server
+            .backend
+            .update_refs(
+                &fixture.old,
+                &[RefUpdate {
+                    name: "refs/heads/created-late".into(),
+                    expected: RefExpectation::Absent,
+                    new: Some(fixture.base.clone()),
+                }],
+            )
+            .await
+            .unwrap();
+        fixture
+            .backend
+            .lose_ref_response
+            .store(lose_reply, Ordering::SeqCst);
+        fixture.clock.0.store(NOW + 10, Ordering::SeqCst);
+        let result = fixture.app.run_lifecycle_once().await;
+        assert_eq!(result.is_err(), lose_reply);
+        let refs = fixture
+            .server
+            .backend
+            .list_refs(&fixture.new, &[])
+            .await
+            .unwrap();
+        assert!(
+            refs.refs
+                .iter()
+                .any(|r| r.name == "refs/heads/main" && r.object_id == late)
+        );
+        fixture
+            .server
+            .backend
+            .update_refs(
+                &fixture.old,
+                &[
+                    RefUpdate {
+                        name: "refs/heads/main".into(),
+                        expected: RefExpectation::At(late),
+                        new: Some(fixture.base.clone()),
+                    },
+                    RefUpdate {
+                        name: "refs/heads/created-late".into(),
+                        expected: RefExpectation::Any,
+                        new: None,
+                    },
+                ],
+            )
+            .await
+            .unwrap();
+        fixture.restart().await;
+        fixture.finish().await;
+        let refs = fixture
+            .server
+            .backend
+            .list_refs(&fixture.new, &[])
+            .await
+            .unwrap();
+        assert_eq!(
+            refs.refs
+                .iter()
+                .find(|r| r.name == "refs/heads/main")
+                .unwrap()
+                .object_id,
+            fixture.base
+        );
+        assert!(
+            !refs
+                .refs
+                .iter()
+                .any(|r| r.name == "refs/heads/created-late")
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires ENROUTE_BIN pointing to the pinned patched backend"]
+async fn reconciliation_regression_keeps_conflict_when_copy_finishes_before_process_loss() {
+    let mut fixture = ReconciliationFixture::start().await;
+    let active = success(call(&fixture.app, &fixture.token, "write_changeset", json!({"repository_id": fixture.repo, "message": "independent active", "changes": [{"action": "put", "path": "active", "contents": "retained"}]})).await)["commit_id"].clone();
+    let first = fixture.write_old("first conflicting value").await;
+    fixture
+        .backend
+        .block_after_copy
+        .store(true, Ordering::SeqCst);
+    fixture.clock.0.store(NOW + 10, Ordering::SeqCst);
+    let worker_app = fixture.app.clone();
+    let worker = tokio::spawn(async move { worker_app.run_lifecycle_once().await });
+    fixture.backend.copy_admitted.notified().await;
+    let second = fixture.write_old("second conflicting value").await;
+    worker.abort();
+    let _ = worker.await;
+    fixture.restart().await;
+    fixture.finish().await;
+    let refs = fixture
+        .server
+        .backend
+        .list_refs(&fixture.new, &[])
+        .await
+        .unwrap();
+    for oid in [first, second] {
+        assert!(
+            refs.refs
+                .iter()
+                .any(|r| r.name.starts_with("refs/cambium-rescue/") && r.object_id == oid),
+            "missing rescue for {oid}"
+        );
+    }
+    assert_eq!(
+        refs.refs
+            .iter()
+            .find(|r| r.name == "refs/heads/main")
+            .unwrap()
+            .object_id
+            .as_str(),
+        active.as_str().unwrap()
     );
 }
