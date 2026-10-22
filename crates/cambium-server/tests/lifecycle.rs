@@ -2208,6 +2208,10 @@ struct ReconciliationFixture {
 
 impl ReconciliationFixture {
     async fn start() -> Self {
+        Self::start_with_ephemeral(false).await
+    }
+
+    async fn start_with_ephemeral(ephemeral: bool) -> Self {
         let server = common::Server::start().await;
         let directory = tempfile::tempdir().unwrap();
         let store = Arc::new(
@@ -2260,6 +2264,9 @@ impl ReconciliationFixture {
         let new = format!("{}/{}/g2", principal.tenant_id, repo.as_str().unwrap())
             .try_into()
             .unwrap();
+        if ephemeral {
+            success(call(&app, &token, "create_ephemeral_branch", json!({"repository_id": repo, "name": "scratch", "start_commit": base, "ttl_seconds": 1})).await);
+        }
         success(
             call(
                 &app,
@@ -2485,5 +2492,84 @@ async fn reconciliation_regression_keeps_conflict_when_copy_finishes_before_proc
             .object_id
             .as_str(),
         active.as_str().unwrap()
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires ENROUTE_BIN pointing to the pinned patched backend"]
+async fn forced_compaction_serializes_expiry_with_an_inflight_reconciliation_copy() {
+    let fixture = ReconciliationFixture::start_with_ephemeral(true).await;
+    let late = fixture.write_old("late scratch update").await;
+    fixture
+        .server
+        .backend
+        .update_refs(
+            &fixture.old,
+            &[
+                RefUpdate {
+                    name: "refs/heads/main".into(),
+                    expected: RefExpectation::Any,
+                    new: Some(fixture.base.clone()),
+                },
+                RefUpdate {
+                    name: "refs/heads/scratch".into(),
+                    expected: RefExpectation::At(fixture.base.clone()),
+                    new: Some(late),
+                },
+            ],
+        )
+        .await
+        .unwrap();
+    fixture
+        .backend
+        .block_after_copy
+        .store(true, Ordering::SeqCst);
+    fixture.clock.0.store(NOW + 10, Ordering::SeqCst);
+    let worker_app = fixture.app.clone();
+    let worker = tokio::spawn(async move { worker_app.run_lifecycle_once().await });
+    fixture.backend.copy_admitted.notified().await;
+    fixture.clock.0.store(NOW + 2000, Ordering::SeqCst);
+    let app = fixture.app.clone();
+    let token = fixture.token.clone();
+    let repo = fixture.repo.clone();
+    let forced = tokio::spawn(async move {
+        call(
+            &app,
+            &token,
+            "request_compaction",
+            json!({"repository_id": repo}),
+        )
+        .await
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let created_early = forced.is_finished();
+    if created_early {
+        success(call(&fixture.app, &fixture.token, "create_ephemeral_branch", json!({"repository_id": fixture.repo, "name": "scratch", "start_commit": fixture.base, "ttl_seconds": 60})).await);
+    }
+    fixture.backend.copy_release.notify_one();
+    worker.await.unwrap().unwrap();
+    success(forced.await.unwrap());
+    if !created_early {
+        success(call(&fixture.app, &fixture.token, "create_ephemeral_branch", json!({"repository_id": fixture.repo, "name": "scratch", "start_commit": fixture.base, "ttl_seconds": 60})).await);
+    }
+    fixture.finish().await;
+    let refs = fixture
+        .server
+        .backend
+        .list_refs(&fixture.new, &[])
+        .await
+        .unwrap();
+    assert_eq!(
+        refs.refs
+            .iter()
+            .find(|r| r.name == "refs/heads/scratch")
+            .unwrap()
+            .object_id,
+        fixture.base
+    );
+    assert!(
+        refs.refs
+            .iter()
+            .all(|r| !r.name.starts_with("refs/cambium-rescue/"))
     );
 }
