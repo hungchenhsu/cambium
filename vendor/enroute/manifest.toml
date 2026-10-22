@@ -1,7 +1,7 @@
 upstream_url = "https://github.com/enroute-sh/enroute.git"
 upstream_commit = "bc0dc6efce9cbbce9a5368e594a9b28f18a12d40"
-version = "0.3.0-cambium.1"
-patch_sha256 = "4d3668b2cab97ed6ecd96bb30fef7a13841f4ab63682fe3989c5886cac02e870"
+version = "0.3.0-cambium.2"
+patch_sha256 = "578b7af35a473c277f00449c703cec87e1289d1edea5a3f8569de9784d1b8b6f"
 
 [copied_sources."signature.rs"]
 source = "crates/api/signature/src/lib.rs"
@@ -17,7 +17,7 @@ sha256 = "cb203b057ba72fe0f034aa88c406e89b026519884fad068ba3c43d9743034aa2"
 
 [copied_sources."proto/enroute/api/v1alpha1/ref.proto"]
 source = "proto/enroute/api/v1alpha1/ref.proto"
-sha256 = "9c630c6c5ab54b0f17d5aca5ce130d5439826d0014f97ba35dc5c64b6c3d0557"
+sha256 = "b477c3d261840ac4e0a6edbdbe5d3e6d1adbd13ef68f3a9c83e70343efd3a2c9"
 
 [copied_sources."proto/enroute/api/v1alpha1/repository.proto"]
 source = "proto/enroute/api/v1alpha1/repository.proto"

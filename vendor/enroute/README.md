@@ -1,4 +1,4 @@
-# Enroute 0.3.0-cambium.1
+# Enroute 0.3.0-cambium.2
 
 This directory distributes an Apache-2.0 patch to
 [Enroute 0.3.0](https://github.com/enroute-sh/enroute/tree/bc0dc6efce9cbbce9a5368e594a9b28f18a12d40).
@@ -56,6 +56,17 @@ even after the object prefix becomes empty. This lets a later sweep discover
 and reclaim an upload that was issued before sealing but completed after an
 empty sweep. The marker is cleanup metadata, not retained repository content.
 Unsealed deletion keeps upstream's existing marker-removal behavior.
+
+The patch also implements [ADR-0015](../../docs/adr/0015-durable-ref-creation-receipts.md).
+`enroute.api.v1alpha1.RefService/CreateRefOnce` atomically creates an absent ref
+and records an applied/refused receipt in the same replicated command. A retry
+with the same opaque ID, ref name, and object ID returns that outcome even after
+the ref moves or disappears. Reusing the ID with different parameters fails.
+Receipts survive replay, snapshots, and restart, are never evicted, and disappear
+only when that repository incarnation is deleted. They are backend API deduplication
+metadata, not Git data or Cambium lifecycle metadata. Sealing still permits receipt
+replay but refuses new creations. Tests exercise both orderings of a concurrent
+Git push that creates exactly the same object ID.
 
 Every node must run this patch. Mixed patched/unpatched nodes and downgrades
 that ignore the seal are unsupported. Restore with patched binaries, or migrate

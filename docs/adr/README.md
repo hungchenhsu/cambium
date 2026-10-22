@@ -18,5 +18,6 @@ Each ADR records one decision: its context, the decision itself, and its consequ
 | [0012](0012-api-transport-and-errors.md) | API transport and error code registry | Accepted |
 | [0013](0013-sealed-generation-reclamation.md) | Seal an old generation before final reconciliation | Accepted; amends 0006, 0007, and 0009 |
 | [0014](0014-encrypted-idempotency-responses.md) | Encrypted idempotency responses | Accepted; amends 0010 and 0011 |
+| [0015](0015-durable-ref-creation-receipts.md) | Durable receipts for ref creation | Accepted; amends 0006, 0007, and 0009 |
 
 New ADRs use the next number and the sections Status, Date, Context, Decision, and Consequences.

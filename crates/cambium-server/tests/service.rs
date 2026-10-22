@@ -51,6 +51,17 @@ impl Backend for FaultBackend {
     async fn seal_repository(&self, id: &BackendRepositoryId) -> Result<(), BackendError> {
         self.backend.seal_repository(id).await
     }
+    async fn create_ref_once(
+        &self,
+        id: &BackendRepositoryId,
+        operation_id: &str,
+        name: &str,
+        object_id: &ObjectId,
+    ) -> Result<bool, BackendError> {
+        self.backend
+            .create_ref_once(id, operation_id, name, object_id)
+            .await
+    }
     async fn list_repositories(
         &self,
         prefix: &str,
