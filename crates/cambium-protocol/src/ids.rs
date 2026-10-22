@@ -8,7 +8,7 @@ pub struct InvalidId;
 
 macro_rules! identifier {
     ($name:ident, $prefix:literal) => {
-        #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+        #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, schemars::JsonSchema)]
         pub struct $name(String);
 
         impl $name {
@@ -79,7 +79,7 @@ identifier!(CompactionId, "cmp_");
 identifier!(RequestId, "req_");
 
 /// SHA-1 at the current protocol version. Never accepts abbreviated hashes.
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, schemars::JsonSchema)]
 pub struct ObjectId(String);
 
 impl ObjectId {

@@ -51,6 +51,23 @@ jobs:
       - name: Install Enroute's pinned toolchain
         working-directory: target/enroute
         run: rustup show
+      - name: Install Git build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev
+      - name: Build the minimum supported Git version
+        run: |
+          git init "$RUNNER_TEMP/git-2.50.0"
+          git -C "$RUNNER_TEMP/git-2.50.0" remote add origin https://github.com/git/git.git
+          git -C "$RUNNER_TEMP/git-2.50.0" fetch --depth 1 origin 16bd9f20a403117f2e0d9bcda6c6e621d3763e77
+          git -C "$RUNNER_TEMP/git-2.50.0" checkout --detach FETCH_HEAD
+          make -C "$RUNNER_TEMP/git-2.50.0" -j 2 NO_GETTEXT=YesPlease NO_TCLTK=YesPlease NO_OPENSSL=YesPlease prefix="$RUNNER_TEMP/git-minimum" install > "$RUNNER_TEMP/git-build.log" 2>&1 || { cat "$RUNNER_TEMP/git-build.log"; exit 1; }
+          "$RUNNER_TEMP/git-minimum/bin/git" --version
+          echo "$RUNNER_TEMP/git-minimum/bin" >> "$GITHUB_PATH"
+      - name: Install the official MCP interoperability client
+        run: |
+          python3 -m venv "$RUNNER_TEMP/mcp-client"
+          "$RUNNER_TEMP/mcp-client/bin/python" -m pip install 'mcp==2.3.0'
       - name: Check formatting and lints
         working-directory: target/enroute
         run: |
@@ -72,5 +89,10 @@ jobs:
         env:
           ENROUTE_BIN: ${{ github.workspace }}/target/enroute/target/debug/enroute
         run: cargo test --locked -p cambium-server --test service -- --ignored
+      - name: Test HTTP, MCP, and signed Git authorization
+        env:
+          ENROUTE_BIN: ${{ github.workspace }}/target/enroute/target/debug/enroute
+          MCP_CLIENT_PYTHON: ${{ runner.temp }}/mcp-client/bin/python
+        run: cargo test --locked -p cambium-server --test transports -- --ignored
       - name: Verify source remained pinned
         run: python3 scripts/prepare_enroute.py --verify

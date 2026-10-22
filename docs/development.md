@@ -3,8 +3,9 @@
 The workspace includes API and backend contracts, a SQLite metadata store,
 token delegation and authorization, CI, license checks, and reusable git path
 fixtures. The Enroute adapter, signed-hook translation, and shared operation
-layer are implemented; the network service and generation lifecycle are still
-in progress.
+layer are implemented, together with the HTTP/MCP binary and signed Git policy.
+The generation lifecycle and container composition are still in progress.
+See the [local setup](local-development.md) to run the current service.
 
 ## Prerequisites
 
@@ -28,7 +29,7 @@ dependencies change. All crates have `publish = false` during scaffolding.
 | `cambium-backend-conformance` | Apache-2.0 | Shared fixtures and the future backend conformance suite |
 | `cambium-backend-enroute` | AGPL-3.0-only | Enroute adapter and hook translation (ADR-0006, ADR-0008) |
 | `cambium-store` | AGPL-3.0-only | Tenant-scoped metadata access and all SQL (ADR-0010) |
-| `cambium-server` | AGPL-3.0-only | Shared operation layer, then HTTP, MCP, and service composition |
+| `cambium-server` | AGPL-3.0-only | Shared operations, HTTP/MCP, signed Git policy, and host administration |
 
 The protocol crate validates typed IDs and byte-field pairs and owns the
 [error registry](api/errors.md). The backend crate defines object-safe storage
@@ -36,7 +37,8 @@ and git policy traits, including the durable seal required by ADR-0013. The
 store crate implements SQLite migrations and tenant-scoped metadata and token
 operations. The server crate implements strict shared requests, repository and
 identity operations, changesets, raw-object reads, and durable idempotency. The
-`cambium` binary and HTTP/MCP transports are the next Phase 1a work.
+`cambium` binary mounts those operations through HTTP and MCP and implements
+private signed-hook policy over the same principal resolution.
 
 Server crates may use the Apache crates. Apache crates must not depend, directly
 or transitively, on AGPL crates. Inherit shared package settings and lints, but
@@ -125,7 +127,8 @@ size and SHA-1. It uses the pinned protobuf sources and signature verifier.
 `GitPolicy` receives only ref names for visibility (the hook provides no object
 IDs), and receives Enroute's force classification for push commands. The hook
 adapter verifies signatures before decoding or invoking policy and refuses
-incomplete policy results. The service must still mount it and implement policy.
+incomplete policy results. The service mounts it on its separate private listener
+and implements tenant, token-chain, generation, and reserved-ref checks.
 
 Run the real adapter tests after building the patched backend:
 
@@ -161,13 +164,20 @@ of a collision warning then makes no claim about unscanned paths. A real-backend
 regression writes a tree with 100,001 entries to exercise that boundary.
 
 `App` accepts a deployment response key and uses encrypted idempotency envelopes
-([ADR-0014](adr/0014-encrypted-idempotency-responses.md)). The network service must
-load that key from private storage and acquire the single-process deployment
+([ADR-0014](adr/0014-encrypted-idempotency-responses.md)). The network service
+loads that key from private storage and acquires the single-process deployment
 lock before invoking `recover_at_startup`. Recovery resumes recorded repository
 creation/deletion and makes abandoned idempotency reservations retryable.
 
-These are operation-layer checks. They do not yet establish HTTP/MCP framing,
-signed-hook tenant policy, container exposure, or ephemeral branch reclamation.
+The separate [transport test](../crates/cambium-server/tests/transports.rs) starts
+real HTTP/MCP and signed-hook listeners with Enroute, then exercises stock Git
+clone/fetch/push, cross-tenant denial, reserved refs, and token revocation.
+An optional official MCP SDK client checks interoperability as described in the
+local setup. The Enroute CI job pins Git 2.50.0 to upstream commit
+`16bd9f20a403117f2e0d9bcda6c6e621d3763e77` and also runs the official MCP SDK
+2.3.0 check. The binary test verifies process ownership, encrypted replay after
+restart, and immediate host-admin revocation. Container exposure and ephemeral
+reclamation require later tests.
 
 ## Metadata and authorization tests
 
@@ -184,5 +194,4 @@ token and all ancestors in the same transaction as the write. The deployment
 bootstrap and human-token issuance methods are intended only for host admin
 commands. There is no network tenant creation operation.
 
-These tests establish store behavior, not HTTP, MCP, git-hook, or real-backend
-isolation. Each transport needs integration tests when its implementation lands.
+These store tests are distinct from the real-backend transport tests above.

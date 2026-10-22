@@ -20,7 +20,7 @@ fn hour() -> u64 {
     3600
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "operation", content = "input", rename_all = "snake_case")]
 pub enum Operation {
     CreateRepository(CreateRepository),
@@ -73,7 +73,7 @@ impl Operation {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateRepository {
     pub name: String,
@@ -81,13 +81,13 @@ pub struct CreateRepository {
     pub default_branch: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Repository {
     pub repository_id: RepositoryId,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ListRepositories {
     #[serde(default = "limit")]
@@ -95,7 +95,7 @@ pub struct ListRepositories {
     pub page_token: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(
     tag = "kind",
     content = "object_id",
@@ -107,7 +107,7 @@ pub enum ExpectedTip {
     At(ObjectId),
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WriteChangeset {
     pub repository_id: RepositoryId,
@@ -120,7 +120,7 @@ pub struct WriteChangeset {
     pub changes: Vec<FileChange>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GitIdentity {
     pub name: String,
@@ -128,7 +128,7 @@ pub struct GitIdentity {
     pub time: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum FileChange {
     Put {
@@ -144,7 +144,7 @@ pub enum FileChange {
     },
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ReadFile {
     pub repository_id: RepositoryId,
@@ -156,7 +156,7 @@ pub struct ReadFile {
     pub always_base64: bool,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ListTree {
     pub repository_id: RepositoryId,
@@ -169,7 +169,7 @@ pub struct ListTree {
     pub page_token: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Diff {
     pub repository_id: RepositoryId,
@@ -180,21 +180,22 @@ pub struct Diff {
     pub page_token: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateIdentity {
+    #[schemars(with = "PublicIdentityKind")]
     pub kind: IdentityKind,
     pub name: String,
     pub owner_id: Option<IdentityId>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Identity {
     pub identity_id: IdentityId,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MintToken {
     pub identity_id: IdentityId,
@@ -204,8 +205,28 @@ pub struct MintToken {
     pub ttl_seconds: u64,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Token {
     pub token_id: TokenId,
+}
+
+/// System actors are internal and cannot be created through an operation.
+#[derive(schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum PublicIdentityKind {
+    Human,
+    Agent,
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn create_identity_schema_only_advertises_public_kinds() {
+        let schema = serde_json::to_value(schemars::schema_for!(super::CreateIdentity)).unwrap();
+        assert_eq!(
+            schema["$defs"]["PublicIdentityKind"]["enum"],
+            serde_json::json!(["human", "agent"])
+        );
+    }
 }

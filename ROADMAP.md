@@ -59,13 +59,13 @@ The smallest Cambium that shows the agent layer working over Enroute.
 - [ ] Cambium implements Enroute's hooks (authentication, visibility, pre-receive, post-receive) and verifies that hook calls come from Enroute
 - [x] SQLite metadata store (tenant/identity/token/repository operations; lifecycle operation methods follow with their implementations)
 - [x] Tenants and scoped, short-lived tokens; tenant and identity fields (human or agent) in every record ([store tests](crates/cambium-store/tests/authorization.rs); transport isolation remains below)
-- [ ] API: create and delete repositories
-- [ ] API: write a changeset (paths and contents) without a checkout, with an idempotency key
-- [ ] API: read a file at a revision, list a tree, diff two revisions
+- [x] API: create and delete repositories
+- [x] API: write a changeset (paths and contents) without a checkout, with an idempotency key
+- [x] API: read a file at a revision, list a tree, diff two revisions
 - [ ] Ephemeral branches with a TTL and cleanup, with storage reclaimed by the method chosen in the reclamation ADR
-- [ ] Stock git clone, fetch, and push through Enroute, authorized by Cambium, with a documented and tested minimum git version (Enroute requires Git 2.50 or later)
-- [ ] Structured errors with stable codes for every call above
-- [ ] MCP server exposing the same operations
+- [x] Stock git clone, fetch, and push through Enroute, authorized by Cambium, with a documented and tested minimum git version (Enroute requires Git 2.50 or later)
+- [ ] Structured errors with stable codes for every call above (implemented operations covered; ephemeral operations remain)
+- [x] MCP server exposing the same operations ([transport and SDK checks](docs/local-development.md#verify-the-transport-and-mcp-client))
 - [ ] Cross-tenant denial tests for the API, MCP, and git traffic, plus a check that Enroute's gRPC listener is not reachable from outside
 - [ ] Five-minute quickstart, plus an example script that drives an agent loop against Cambium
 
