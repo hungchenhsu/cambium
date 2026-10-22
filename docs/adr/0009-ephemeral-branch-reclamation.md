@@ -1,6 +1,6 @@
 # ADR-0009: Reclaiming storage from expired ephemeral branches
 
-- **Status:** Accepted
+- **Status:** Accepted; final reconciliation, deletion, and timing rules are superseded by [ADR-0013](0013-sealed-generation-reclamation.md)
 - **Date:** 2026-10-18
 
 ## Context
