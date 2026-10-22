@@ -105,6 +105,17 @@ These are reusable input fixtures and a stock-git round trip, not evidence of
 Enroute conformance, Cambium path parsing, or backend migration correctness.
 Those checks belong to the implementations described in ADR-0007.
 
+## Pinned Enroute patch
+
+[Enroute 0.3.0-cambium.1](../vendor/enroute/README.md) adds the durable seal
+required by ADR-0013. Its source is pinned by upstream commit and patch SHA-256,
+with the Apache-2.0 license and upstream attribution retained. The preparation
+script applies only that patch to a fresh checkout and verifies source drift.
+The [patch workflow](../.github/workflows/enroute.yml) tests replicated state,
+restart and snapshot persistence, real git writes racing with a seal, and
+storage reclamation of late uploads. This verifies the backend primitive;
+Cambium's generation lifecycle and adapter require their own integration tests.
+
 ## Metadata and authorization tests
 
 `cargo test -p cambium-store` creates disposable SQLite databases. It tests
