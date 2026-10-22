@@ -1,0 +1,15 @@
+[package]
+name = "cambium-store"
+description = "Cambium's tenant-scoped metadata store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+license = "AGPL-3.0-only"
+
+[dependencies]
+cambium-protocol.workspace = true
+
+[lints]
+workspace = true

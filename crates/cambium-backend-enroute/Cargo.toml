@@ -1,0 +1,18 @@
+[package]
+name = "cambium-backend-enroute"
+description = "Server-side Enroute storage adapter for Cambium"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+license = "AGPL-3.0-only"
+
+[dependencies]
+cambium-backend.workspace = true
+
+[dev-dependencies]
+cambium-backend-conformance.workspace = true
+
+[lints]
+workspace = true

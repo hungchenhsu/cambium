@@ -1,0 +1,18 @@
+[package]
+name = "cambium-server"
+description = "Cambium's shared operation layer and service composition"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+license = "AGPL-3.0-only"
+
+[dependencies]
+cambium-protocol.workspace = true
+cambium-backend.workspace = true
+cambium-backend-enroute.workspace = true
+cambium-store.workspace = true
+
+[lints]
+workspace = true

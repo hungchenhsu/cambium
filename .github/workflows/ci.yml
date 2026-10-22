@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        run: rustup show
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Check lints
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Run tests, including the git path corpus
+        run: cargo test --workspace --all-features --locked
+
+  licenses:
+    name: License policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        run: rustup show
+      - name: Install the pinned license checker
+        run: cargo install --locked cargo-deny --version 0.20.2
+      - name: Check workspace licenses and every Apache dependency graph
+        run: python3 scripts/check_licenses.py
+      - name: Prove the license policy rejects invalid graphs
+        run: python3 -m unittest discover -s scripts/tests -v

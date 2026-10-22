@@ -23,10 +23,14 @@ Decisions and scaffolding before any code.
 
 **Scaffolding**
 
-- [ ] Cargo workspace, pinned toolchain (`rust-toolchain.toml`), crate layout
-- [ ] CI: `cargo fmt`, `cargo clippy`, `cargo test`
-- [ ] CI license policy (for example `cargo-deny`): every crate declares a license, no Apache-2.0 crate depends on an AGPL-3.0-only crate, and third-party dependencies pass the ADR-0003 allow-list
-- [ ] Path test corpus: non-UTF-8, NFC vs NFD, and case-colliding paths (ADR-0005)
+- [x] Cargo workspace, pinned toolchain (`rust-toolchain.toml`), crate layout ([development guide](docs/development.md))
+- [x] CI: `cargo fmt`, `cargo clippy`, `cargo test` ([workflow](.github/workflows/ci.yml))
+- [x] CI license policy: every crate declares a license, no Apache-2.0 crate depends on an AGPL-3.0-only crate, and third-party dependencies pass the ADR-0003 allow-list ([checker](scripts/check_licenses.py))
+- [x] Path test corpus: non-UTF-8, NFC vs NFD, and case-colliding paths (ADR-0005; [corpus](crates/cambium-backend-conformance/src/paths.rs))
+
+The scaffolding checks can be run locally as described in the development guide.
+The CI workflow must pass on GitHub before the workspace-in-CI exit criterion is
+met. The Code of Conduct contact and final product name below remain open.
 
 **Open-source readiness**
 

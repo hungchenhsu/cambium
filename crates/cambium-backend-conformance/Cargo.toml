@@ -1,0 +1,18 @@
+[package]
+name = "cambium-backend-conformance"
+description = "Reusable path fixtures and storage backend conformance tests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+license = "Apache-2.0"
+
+[dependencies]
+cambium-backend.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

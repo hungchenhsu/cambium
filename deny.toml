@@ -1,0 +1,29 @@
+# The whole workspace may use these AGPL-compatible dependencies (ADR-0003).
+# scripts/check_licenses.py also checks every Apache root with deny-apache.toml.
+[graph]
+all-features = true
+
+[licenses]
+confidence-threshold = 0.95
+include-dev = true
+include-build = true
+unused-allowed-license = "allow"
+allow = [
+  "Apache-2.0",
+  "MIT",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "Unicode-3.0",
+  "AGPL-3.0-only",
+  "GPL-3.0-only",
+  "GPL-3.0-or-later",
+  "LGPL-2.1-only",
+  "LGPL-2.1-or-later",
+  "LGPL-3.0-only",
+  "LGPL-3.0-or-later",
+]
+
+[licenses.private]
+ignore = false
