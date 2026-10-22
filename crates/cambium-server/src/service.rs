@@ -455,13 +455,16 @@ impl App {
         operation: &Operation,
         mut reservation: Option<Reservation<'_>>,
     ) -> Result<Value, ApiError> {
-        let _lifecycle = if let Operation::DeleteRepository(input) = operation {
-            Some(
-                self.lifecycle_lock(&principal.tenant_id, &input.repository_id)
-                    .await?,
-            )
-        } else {
-            None
+        let lifecycle_repository = match operation {
+            Operation::DeleteRepository(input) => Some(&input.repository_id),
+            // Manual compaction also expires branches. Serialize it with the
+            // worker so an in-flight copy cannot target a replacement owner.
+            Operation::RequestCompaction(input) => Some(&input.repository_id),
+            _ => None,
+        };
+        let _lifecycle = match lifecycle_repository {
+            Some(id) => Some(self.lifecycle_lock(&principal.tenant_id, id).await?),
+            None => None,
         };
         let _guard = if operation.mutating() {
             if let Some(id) = operation.repository() {
