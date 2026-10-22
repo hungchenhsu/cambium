@@ -204,6 +204,7 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
             .await
             .unwrap();
         assert_eq!(preflight.status(), 204);
+        assert!(preflight.headers().contains_key("request-id"));
         assert_eq!(
             preflight.headers()["access-control-allow-origin"],
             "https://allowed.example"

@@ -114,6 +114,11 @@ async fn cors(State(state): State<PublicState>, request: Request, next: Next) ->
         }
         let mut response = StatusCode::NO_CONTENT.into_response();
         response.headers_mut().insert(
+            "request-id",
+            HeaderValue::from_str(RequestId::new().as_str())
+                .expect("generated request IDs are ASCII"),
+        );
+        response.headers_mut().insert(
             header::ACCESS_CONTROL_ALLOW_METHODS,
             HeaderValue::from_static("POST"),
         );
