@@ -297,6 +297,16 @@ async fn shared_operations_preserve_authorization_bytes_and_idempotent_effects()
     let narrow = success(call(&app, token, "mint_token", json!({"identity_id": principal.actor.identity_id, "scope": "repo:read", "repositories": [repo], "idempotency_key": "mint-reader"})).await);
     let reader = narrow["token"].as_str().unwrap();
     error(
+        call(
+            &app,
+            reader,
+            "get_identity",
+            json!({"identity_id": principal.actor.identity_id}),
+        )
+        .await,
+        "permission_denied",
+    );
+    error(
         call(&app, reader, "write_changeset", write).await,
         "permission_denied",
     );
@@ -408,4 +418,69 @@ async fn shared_operations_preserve_authorization_bytes_and_idempotent_effects()
     for secret in [token.as_bytes(), reader.as_bytes()] {
         assert!(!bytes.windows(secret.len()).any(|v| v == secret));
     }
+}
+
+#[tokio::test]
+#[ignore = "requires ENROUTE_BIN pointing to the pinned patched backend"]
+async fn a_large_tree_warning_limit_preserves_the_applied_commit_and_replay() {
+    let server = common::Server::start().await;
+    let directory = tempfile::tempdir().unwrap();
+    let store = Arc::new(
+        SqliteStore::open(
+            directory.path().join("metadata.sqlite"),
+            TokenSettings::default(),
+        )
+        .await
+        .unwrap(),
+    );
+    let secret = new_token().unwrap();
+    store
+        .deployment_bootstrap(
+            &Bootstrap {
+                tenant_slug: "large".into(),
+                human_name: "Operator".into(),
+                token_hash: token_hash(&secret).unwrap(),
+                expires_at_ms: NOW + 86_400_000,
+            },
+            NOW,
+        )
+        .await
+        .unwrap();
+    let app = Arc::new(App::new(
+        store,
+        Arc::new(server.backend.clone()),
+        Arc::new(TestClock(AtomicI64::new(NOW))),
+        &[42; 32],
+        server.git.clone(),
+    ));
+    let repo = success(
+        call(
+            &app,
+            &secret,
+            "create_repository",
+            json!({"name": "project"}),
+        )
+        .await,
+    );
+    let changes: Vec<Value> = (0..100_001)
+        .map(|index| json!({"action": "put", "path": format!("file-{index:06}"), "contents": "x"}))
+        .collect();
+    let input = json!({"repository_id": repo["repository_id"], "message": "Large tree", "idempotency_key": "large", "changes": changes});
+    let response = success(call(&app, &secret, "write_changeset", input.clone()).await);
+    assert_eq!(response["path_collision_check_complete"], false);
+    assert!(response["commit_id"].is_string());
+    let replay = call(&app, &secret, "write_changeset", input).await;
+    assert!(replay.replayed);
+    assert_eq!(success(replay), response);
+    let file = success(
+        call(
+            &app,
+            &secret,
+            "read_file",
+            json!({"repository_id": repo["repository_id"], "path": "file-100000"}),
+        )
+        .await,
+    );
+    assert_eq!(file["revision"], response["commit_id"]);
+    assert_eq!(file["contents"], "x");
 }

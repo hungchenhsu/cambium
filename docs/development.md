@@ -154,6 +154,12 @@ CAS after a lost response, and completion after caller cancellation. Ordinary
 tests also check raw git parsing against the path corpus, mode-only diffs, and
 encryption that binds a cached response to its identity and request.
 
+Changeset success includes `path_collision_check_complete`. If warning scanning
+hits a tree limit or a backend read fails after the commit lands, this field is
+false and the successful commit IDs are still returned and cached. The absence
+of a collision warning then makes no claim about unscanned paths. A real-backend
+regression writes a tree with 100,001 entries to exercise that boundary.
+
 `App` accepts a deployment response key and uses encrypted idempotency envelopes
 ([ADR-0014](adr/0014-encrypted-idempotency-responses.md)). The network service must
 load that key from private storage and acquire the single-process deployment

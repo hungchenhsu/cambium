@@ -53,9 +53,10 @@ impl Operation {
         match self {
             Self::CreateRepository(_) | Self::DeleteRepository(_) => Scope::RepoAdmin,
             Self::WriteChangeset(_) => Scope::RepoWrite,
-            Self::CreateIdentity(_) | Self::RevokeToken(_) | Self::DisableIdentity(_) => {
-                Scope::TenantAdmin
-            }
+            Self::CreateIdentity(_)
+            | Self::GetIdentity(_)
+            | Self::RevokeToken(_)
+            | Self::DisableIdentity(_) => Scope::TenantAdmin,
             _ => Scope::RepoRead,
         }
     }

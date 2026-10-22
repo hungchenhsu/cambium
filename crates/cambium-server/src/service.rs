@@ -802,15 +802,18 @@ impl App {
             backend: self.backend.as_ref(),
             repository: &backend_id,
         };
-        let entries = objects
-            .tree(&result.commit_id, true)
-            .await
-            .map_err(backend_error)?;
         let mut response = json!({"commit_id": result.commit_id, "tree_id": result.tree_id});
         if let Some(parent) = result.parent_commit_id {
             response["parent_commit_id"] = json!(parent);
         }
-        add_collision_warnings(&mut response, &entries);
+        // Warning derivation must not turn an applied commit into a cached failure.
+        match objects.tree(&result.commit_id, true).await {
+            Ok(entries) => {
+                response["path_collision_check_complete"] = json!(true);
+                add_collision_warnings(&mut response, &entries);
+            }
+            Err(_) => response["path_collision_check_complete"] = json!(false),
+        }
         Ok(response)
     }
 
