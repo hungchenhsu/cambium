@@ -28,6 +28,10 @@ service RefService {
   // object arrives this way.
   rpc UpdateRefs(UpdateRefsRequest) returns (UpdateRefsResponse);
 
+  // Cambium extension: an absent-ref CAS with an atomic durable receipt.
+  // Repeating an operation ID returns its original outcome without moving refs.
+  rpc CreateRefOnce(CreateRefOnceRequest) returns (CreateRefOnceResponse);
+
   // Does `descendant_commit_id` have `ancestor_commit_id` in its history?
   //
   // The commit graph is here and an application is not, which is the same
@@ -83,6 +87,18 @@ message UpdateRefsRequest {
   common.v1alpha1.RepoKey repo = 1;
   // Each applied on its own. Outcomes come back in this order.
   repeated RefUpdate updates = 2;
+}
+
+message CreateRefOnceRequest {
+  common.v1alpha1.RepoKey repo = 1;
+  string operation_id = 2;
+  string refname = 3;
+  common.v1alpha1.ObjectId object_id = 4;
+}
+
+message CreateRefOnceResponse {
+  // False means the ref already existed when this operation was first applied.
+  bool created = 1;
 }
 
 message IsAncestorRequest {

@@ -22,6 +22,7 @@ Decisions and scaffolding before any code.
 - [x] API transport and error code registry ([ADR-0012](docs/adr/0012-api-transport-and-errors.md))
 - [x] Durable seal before final reconciliation and deletion ([ADR-0013](docs/adr/0013-sealed-generation-reclamation.md))
 - [x] Encrypted idempotency response replay, including token minting ([ADR-0014](docs/adr/0014-encrypted-idempotency-responses.md))
+- [x] Durable ref creation receipts for unambiguous branch ownership ([ADR-0015](docs/adr/0015-durable-ref-creation-receipts.md))
 
 **Scaffolding**
 

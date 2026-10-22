@@ -262,8 +262,72 @@ async fn real_backend_lifecycle_cas_copy_and_seal() {
             .refs
             .is_empty()
     );
+    assert!(backend.capabilities().durable_ref_creation);
+    let receipt_ref = "refs/heads/receipt";
+    assert!(
+        backend
+            .create_ref_once(&source, "created", receipt_ref, &first.commit_id)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !backend
+            .create_ref_once(&source, "refused", receipt_ref, &first.commit_id)
+            .await
+            .unwrap()
+    );
+    let removed = backend
+        .update_refs(
+            &source,
+            &[RefUpdate {
+                name: receipt_ref.into(),
+                expected: RefExpectation::At(first.commit_id.clone()),
+                new: None,
+            }],
+        )
+        .await
+        .unwrap();
+    assert!(removed[0].rejection.is_none());
+    assert!(
+        backend
+            .create_ref_once(&source, "created", receipt_ref, &first.commit_id)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !backend
+            .create_ref_once(&source, "refused", receipt_ref, &first.commit_id)
+            .await
+            .unwrap()
+    );
+    assert!(
+        backend
+            .list_refs(&source, &[receipt_ref.into()])
+            .await
+            .unwrap()
+            .refs
+            .is_empty()
+    );
+    assert!(matches!(
+        backend
+            .create_ref_once(&source, "created", receipt_ref, &second.commit_id)
+            .await,
+        Err(BackendError::InvalidRequest { .. })
+    ));
     backend.seal_repository(&source).await.unwrap();
     backend.seal_repository(&source).await.unwrap();
+    assert!(
+        backend
+            .create_ref_once(&source, "created", receipt_ref, &first.commit_id)
+            .await
+            .unwrap()
+    );
+    assert!(matches!(
+        backend
+            .create_ref_once(&source, "after-seal", receipt_ref, &first.commit_id)
+            .await,
+        Err(BackendError::RepositorySealed)
+    ));
     assert!(matches!(
         backend
             .create_commit(&source, &request(Some(second.commit_id.clone())))

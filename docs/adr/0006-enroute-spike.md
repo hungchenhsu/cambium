@@ -1,6 +1,6 @@
 # ADR-0006: Enroute 0.3.0 spike results
 
-- **Status:** Accepted; the Phase 1a backend version is amended by [ADR-0013](0013-sealed-generation-reclamation.md)
+- **Status:** Accepted; the Phase 1a backend version is amended by [ADR-0013](0013-sealed-generation-reclamation.md) and [ADR-0015](0015-durable-ref-creation-receipts.md)
 - **Date:** 2026-10-18
 
 ## Context

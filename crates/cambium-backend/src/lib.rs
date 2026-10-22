@@ -62,6 +62,7 @@ pub struct Capabilities {
     pub atomic_ref_updates: bool,
     pub reclaims_unreachable_objects: bool,
     pub durable_seal: bool,
+    pub durable_ref_creation: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -242,6 +243,21 @@ pub trait Backend: Send + Sync {
     ) -> Result<(), BackendError>;
     async fn delete_repository(&self, id: &BackendRepositoryId) -> Result<(), BackendError>;
     async fn seal_repository(&self, id: &BackendRepositoryId) -> Result<(), BackendError>;
+    /// An atomic absent-ref CAS and durable receipt, scoped to this incarnation.
+    /// Retries return the original outcome without changing the ref again.
+    async fn create_ref_once(
+        &self,
+        id: &BackendRepositoryId,
+        operation_id: &str,
+        name: &str,
+        object_id: &ObjectId,
+    ) -> Result<bool, BackendError> {
+        let _ = (id, operation_id, name, object_id);
+        Err(BackendError::InvalidRequest {
+            field: "durable_ref_creation".into(),
+            reason: "Backend does not support durable ref creation".into(),
+        })
+    }
     async fn list_repositories(
         &self,
         prefix: &str,

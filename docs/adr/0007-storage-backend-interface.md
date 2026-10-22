@@ -1,6 +1,6 @@
 # ADR-0007: Storage backend interface and conformance suite
 
-- **Status:** Accepted; the durable seal contract is added by [ADR-0013](0013-sealed-generation-reclamation.md)
+- **Status:** Accepted; durable seal is added by [ADR-0013](0013-sealed-generation-reclamation.md) and durable ref creation by [ADR-0015](0015-durable-ref-creation-receipts.md)
 - **Date:** 2026-10-18
 
 ## Context

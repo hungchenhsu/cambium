@@ -1,4 +1,4 @@
-//! Enroute 0.3.0-cambium.1 adapter, with wire sources pinned under `vendor/enroute`.
+//! Enroute 0.3.0-cambium.2 adapter, with wire sources pinned under `vendor/enroute`.
 
 use std::{sync::Arc, time::Duration};
 
@@ -70,7 +70,7 @@ pub struct EnrouteBackend {
 
 impl EnrouteBackend {
     /// Connect only to a private listener. The deployment must enforce isolation.
-    /// The non-mutating probe rejects binaries without the durable seal RPC.
+    /// Non-mutating probes reject binaries without both required durability RPCs.
     pub async fn connect(
         endpoint: &str,
         git_base: &str,
@@ -101,6 +101,22 @@ impl EnrouteBackend {
             Err(error) if error.code() == Code::InvalidArgument => {}
             Err(error) if error.code() == Code::Unimplemented => {
                 return Err(invalid("durable_seal"));
+            }
+            Err(error) => return Err(map_status(error)),
+            Ok(_) => return Err(BackendError::Internal),
+        }
+        match RefServiceClient::new(channel.clone())
+            .create_ref_once(api::CreateRefOnceRequest {
+                repo: None,
+                operation_id: String::new(),
+                refname: String::new(),
+                object_id: None,
+            })
+            .await
+        {
+            Err(error) if error.code() == Code::InvalidArgument => {}
+            Err(error) if error.code() == Code::Unimplemented => {
+                return Err(invalid("durable_ref_creation"));
             }
             Err(error) => return Err(map_status(error)),
             Ok(_) => return Err(BackendError::Internal),
@@ -240,6 +256,7 @@ impl Backend for EnrouteBackend {
             atomic_ref_updates: false,
             reclaims_unreachable_objects: false,
             durable_seal: true,
+            durable_ref_creation: true,
         }
     }
 
@@ -276,6 +293,27 @@ impl Backend for EnrouteBackend {
             .await
             .map_err(map_status)?;
         Ok(())
+    }
+
+    async fn create_ref_once(
+        &self,
+        id: &BackendRepositoryId,
+        operation_id: &str,
+        name: &str,
+        object_id: &ObjectId,
+    ) -> Result<bool, BackendError> {
+        let response = self
+            .refs()
+            .create_ref_once(api::CreateRefOnceRequest {
+                repo: Some(key(id)),
+                operation_id: operation_id.into(),
+                refname: name.into(),
+                object_id: Some(oid(object_id)),
+            })
+            .await
+            .map_err(map_status)?
+            .into_inner();
+        Ok(response.created)
     }
 
     async fn list_repositories(
