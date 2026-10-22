@@ -1,7 +1,7 @@
 upstream_url = "https://github.com/enroute-sh/enroute.git"
 upstream_commit = "bc0dc6efce9cbbce9a5368e594a9b28f18a12d40"
 version = "0.3.0-cambium.2"
-patch_sha256 = "578b7af35a473c277f00449c703cec87e1289d1edea5a3f8569de9784d1b8b6f"
+patch_sha256 = "b83bbc67ce3081f80978386d4fe960c5e237c2bba4e36caca244af5a70ab226f"
 
 [copied_sources."signature.rs"]
 source = "crates/api/signature/src/lib.rs"
