@@ -269,12 +269,9 @@ async fn hooks_reject_untrusted_bytes_before_policy_and_preserve_all_four_calls(
                     panic!("denial")
                 };
                 assert_eq!(denial.denial, wire::Denial::Unauthorized as i32);
-                assert!(
-                    denial
-                        .challenge
-                        .unwrap()
-                        .www_authenticate
-                        .starts_with("Basic ")
+                assert_eq!(
+                    denial.challenge.unwrap().www_authenticate,
+                    "Basic realm=\"cambium\""
                 );
             }
             wire::hook_response::Answer::VisibleRefs(answer) => {

@@ -128,7 +128,7 @@ impl HookAdapter {
                             denial: denial as i32,
                             challenge: (denial == wire::Denial::Unauthorized).then(|| {
                                 wire::Challenge {
-                                    www_authenticate: "Basic realm=\"Cambium\"".into(),
+                                    www_authenticate: "Basic realm=\"cambium\"".into(),
                                     help: "Provide a valid Cambium token as the password.\n".into(),
                                 }
                             }),
