@@ -7,6 +7,43 @@ const RETENTION_MS: i64 = 24 * 60 * 60 * 1000;
 
 #[async_trait]
 impl OperationsStore for SqliteStore {
+    async fn record_branch_activity(
+        &self,
+        principal: &Principal,
+        repository: &RepositoryId,
+        names: &[String],
+        now_ms: i64,
+    ) -> StoreResult<()> {
+        let mut tx = self.writer.begin().await?;
+        let (principal, _) = self
+            .resolve(&mut tx, &principal.tenant_id, &principal.token_id, now_ms)
+            .await?;
+        principal.require_repository(repository, Scope::RepoWrite)?;
+        for name in names {
+            sqlx::query("UPDATE branches SET last_activity_at_ms = MAX(COALESCE(last_activity_at_ms, 0), ?), updated_at_ms = ?, updated_by = ?, updated_by_kind = ? WHERE tenant_id = ? AND repository_id = ? AND name = ? AND state = 'active' AND expires_at_ms > ?")
+                .bind(now_ms).bind(now_ms).bind(principal.actor.identity_id.as_str()).bind(kind_name(principal.actor.kind)).bind(principal.tenant_id.as_str()).bind(repository.as_str()).bind(name).bind(now_ms).execute(&mut *tx).await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn deployment_purge_expired_responses(&self, now_ms: i64) -> StoreResult<()> {
+        sqlx::query("DELETE FROM idempotency WHERE expires_at_ms <= ? AND state != 'running'")
+            .bind(now_ms)
+            .execute(&self.writer)
+            .await?;
+        Ok(())
+    }
+
+    async fn blocked_branch_names(
+        &self,
+        tenant: &TenantId,
+        repository: &RepositoryId,
+        now_ms: i64,
+    ) -> StoreResult<Vec<String>> {
+        Ok(sqlx::query_scalar("SELECT DISTINCT b.name FROM branches b WHERE b.tenant_id = ? AND b.repository_id = ? AND (b.state = 'creating' OR b.state = 'expiring' OR (b.state = 'active' AND b.expires_at_ms <= ?) OR (EXISTS(SELECT 1 FROM expiries e WHERE e.tenant_id = b.tenant_id AND e.branch_id = b.id AND e.reclaimed_at_ms IS NULL) AND NOT EXISTS(SELECT 1 FROM branches live WHERE live.tenant_id = b.tenant_id AND live.repository_id = b.repository_id AND live.name = b.name AND live.state = 'active' AND live.expires_at_ms > ?)))")
+            .bind(tenant.as_str()).bind(repository.as_str()).bind(now_ms).bind(now_ms).fetch_all(&self.readers).await?)
+    }
     async fn get_repository_including_deleted(
         &self,
         tenant: &TenantId,

@@ -4,6 +4,7 @@ use cambium_store::{
     operations::{Claim, Completion, OperationKey, OperationsStore},
 };
 use serde_json::json;
+use sqlx::{Connection as _, SqliteConnection, sqlite::SqliteConnectOptions};
 
 const NOW: i64 = 1_800_000_000_000;
 
@@ -63,6 +64,10 @@ async fn reservations_survive_restart_and_stale_runs_cannot_overwrite_a_retry() 
         ErrorCode::IdempotencyKeyReused
     );
     // Even an overdue run is still protected while the process may be writing.
+    store
+        .deployment_purge_expired_responses(NOW + 86_400_001)
+        .await
+        .unwrap();
     assert_eq!(
         store
             .claim_operation(&principal, &key, NOW + 86_400_001)
@@ -142,6 +147,18 @@ async fn reservations_survive_restart_and_stale_runs_cannot_overwrite_a_retry() 
             .code(),
         ErrorCode::Unauthenticated
     );
+    store
+        .deployment_purge_expired_responses(NOW + 86_400_001)
+        .await
+        .unwrap();
+    let mut database = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&path))
+        .await
+        .unwrap();
+    let remaining: i64 = sqlx::query_scalar("SELECT count(*) FROM idempotency")
+        .fetch_one(&mut database)
+        .await
+        .unwrap();
+    assert_eq!(remaining, 0);
 }
 
 #[tokio::test]

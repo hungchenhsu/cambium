@@ -1,6 +1,6 @@
 # cambium
 
-> **專案代號，pre-alpha。** Cambium 已有通過測試的 SQLite 授權 store、Enroute adapter，以及具備持久化 idempotency 的共用操作層，尚無可執行的服務。
+> **專案代號，pre-alpha。** Cambium 已有可執行的 HTTP／MCP 服務、透過 signed hooks 管控 Enroute 的 Git 授權，以及持久化 idempotency。短命分支儲存回收與一鍵啟動的 container quickstart 仍在開發中。請參考[本機開發設定](docs/local-development.md)。
 > 正式產品名稱會在對外推出前決定。
 
 [English](README.md)

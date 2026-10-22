@@ -9,6 +9,7 @@ publish.workspace = true
 license = "Apache-2.0"
 
 [dependencies]
+schemars.workspace = true
 cambium-protocol.workspace = true
 async-trait.workspace = true
 serde.workspace = true

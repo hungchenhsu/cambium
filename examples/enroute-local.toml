@@ -1,0 +1,20 @@
+[bucket]
+uri = "file://${CAMBIUM_DATA_DIR}/enroute-objects"
+
+[node]
+data_dir = "${CAMBIUM_DATA_DIR}/enroute-node"
+internal_listen = "127.0.0.1:8084"
+cpu_threads = 2
+
+[listen]
+api = "127.0.0.1:8082"
+git = "127.0.0.1:8083"
+
+[git]
+create_on_push = false
+allow_private_remotes = true
+
+[hooks]
+enabled = ["authorize", "visible_refs", "pre_receive", "post_receive"]
+endpoint_url = "http://127.0.0.1:8081/api/enroute/hooks"
+signing_key = "${ENROUTE_HOOK_SIGNING_KEY}"

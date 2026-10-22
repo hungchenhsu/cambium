@@ -32,6 +32,20 @@ pub struct Completion {
 
 #[async_trait]
 pub trait OperationsStore: Store {
+    async fn record_branch_activity(
+        &self,
+        principal: &Principal,
+        repository: &RepositoryId,
+        names: &[String],
+        now_ms: i64,
+    ) -> StoreResult<()>;
+    async fn deployment_purge_expired_responses(&self, now_ms: i64) -> StoreResult<()>;
+    async fn blocked_branch_names(
+        &self,
+        tenant: &TenantId,
+        repository: &RepositoryId,
+        now_ms: i64,
+    ) -> StoreResult<Vec<String>>;
     async fn revalidate(
         &self,
         tenant: &TenantId,

@@ -44,6 +44,11 @@ gix-object = { version = "0.66", features = ["sha1"] }
 gix-hash = { version = "0.28", features = ["sha1"] }
 unicode-normalization = "0.1"
 chacha20poly1305 = "0.11"
+axum = "0.8"
+schemars = "1"
+clap = { version = "4", features = ["derive"] }
+toml = "0.9"
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

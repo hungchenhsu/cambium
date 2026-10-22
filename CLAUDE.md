@@ -6,7 +6,7 @@ This file is the single source of truth for repository rules and the repository 
 
 - `cambium` is the code name for an open-source, agent-first layer for git repositories, written in Rust, over pluggable git storage engines (Enroute first). The final product name will be chosen before public launch.
 - **The gap it fills:** forges and object-storage git engines each cover part of what agent fleets need ([docs/comparison.md](docs/comparison.md)). Cambium combines the rest into one lifecycle over storage engines that can be swapped: tenant isolation, human and agent identities, ephemeral branches whose storage is reclaimed, an agent API and MCP server, provenance, and merge policy. Judge every scope decision against this gap. Do not rebuild what a storage backend already does well.
-- **Stage:** Phase 1a in progress. Protocol/backend contracts, the SQLite store, the Enroute adapter, and shared operations with durable idempotency exist. HTTP/MCP service composition and the generation lifecycle are not implemented yet. See `ROADMAP.md`.
+- **Stage:** Phase 1a in progress. A runnable HTTP/MCP service, signed Git authorization, SQLite tenancy, Enroute storage, and durable idempotency exist. Ephemeral branch reclamation and container composition are not implemented yet. See `ROADMAP.md`.
 - The repository is public. Contributions follow `CONTRIBUTING.md` and require a DCO sign-off.
 
 ## 2. Language

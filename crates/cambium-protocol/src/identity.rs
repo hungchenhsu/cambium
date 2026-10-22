@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{ApiError, ErrorCode, IdentityId, RepositoryId, TenantId, TokenId};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum IdentityKind {
     Human,
@@ -10,7 +10,9 @@ pub enum IdentityKind {
     System,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize, schemars::JsonSchema,
+)]
 pub enum Scope {
     #[serde(rename = "repo:read")]
     RepoRead,
@@ -37,7 +39,7 @@ impl Scope {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Actor {
     pub identity_id: IdentityId,
     pub kind: IdentityKind,
