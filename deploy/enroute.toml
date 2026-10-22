@@ -1,0 +1,26 @@
+[bucket]
+uri = "file:///var/lib/enroute/objects"
+
+[node]
+data_dir = "/var/lib/enroute/node"
+internal_listen = "127.0.0.1:8084"
+cpu_threads = 2
+
+[listen]
+api = "0.0.0.0:8082"
+git = "0.0.0.0:8083"
+
+[git]
+create_on_push = false
+allow_private_remotes = true
+
+[hooks]
+enabled = ["authorize", "visible_refs", "pre_receive", "post_receive"]
+endpoint_url = "http://cambium:8081/api/enroute/hooks"
+signing_key = "${ENROUTE_HOOK_SIGNING_KEY}"
+
+# Make physical reclamation observable during the local quickstart.
+[layers]
+inline_layer = 0
+sweep_interval = "1s"
+sweep_retention = "3s"

@@ -1,0 +1,15 @@
+**
+!Cargo.toml
+!Cargo.lock
+!rust-toolchain.toml
+!crates
+!crates/**
+!vendor
+!vendor/enroute
+!vendor/enroute/**
+!scripts
+!scripts/prepare_enroute.py
+!deploy
+!deploy/**
+!LICENSE-APACHE
+!LICENSE-AGPL

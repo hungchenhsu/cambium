@@ -1,0 +1,85 @@
+name: Local compose
+
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - compose.yaml
+      - deploy/**
+      - examples/agent-loop.py
+      - examples/requirements.txt
+      - scripts/verify_compose.py
+      - scripts/prepare_enroute.py
+      - vendor/enroute/**
+      - crates/**
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - .github/workflows/compose.yml
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - compose.yaml
+      - deploy/**
+      - examples/agent-loop.py
+      - examples/requirements.txt
+      - scripts/verify_compose.py
+      - scripts/prepare_enroute.py
+      - vendor/enroute/**
+      - crates/**
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - .github/workflows/compose.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quickstart:
+    name: Compose agent loop and isolation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the minimum Git client and official MCP SDK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev
+          git init "$RUNNER_TEMP/git-2.50.0"
+          git -C "$RUNNER_TEMP/git-2.50.0" remote add origin https://github.com/git/git.git
+          git -C "$RUNNER_TEMP/git-2.50.0" fetch --depth 1 origin 16bd9f20a403117f2e0d9bcda6c6e621d3763e77
+          git -C "$RUNNER_TEMP/git-2.50.0" checkout --detach FETCH_HEAD
+          make -C "$RUNNER_TEMP/git-2.50.0" -j 2 NO_GETTEXT=YesPlease NO_TCLTK=YesPlease NO_OPENSSL=YesPlease prefix="$RUNNER_TEMP/git-minimum" install > "$RUNNER_TEMP/git-build.log" 2>&1 || { cat "$RUNNER_TEMP/git-build.log"; exit 1; }
+          echo "$RUNNER_TEMP/git-minimum/bin" >> "$GITHUB_PATH"
+          python3 -m venv .venv-demo
+          .venv-demo/bin/python -m pip install -r examples/requirements.txt
+      - name: Build and start the quickstart
+        run: docker compose up --build -d --wait
+      - name: Run the documented agent loop and isolation checks
+        run: |
+          umask 077
+          docker compose exec -T cambium cambium --data-dir /var/lib/cambium/state --json admin bootstrap --tenant-slug demo --human-name Operator > .cambium-bootstrap.json
+          .venv-demo/bin/python examples/agent-loop.py --credential-file .cambium-bootstrap.json > "$RUNNER_TEMP/cambium-demo-result.json"
+          python3 scripts/verify_compose.py --credential-file .cambium-bootstrap.json --result-file "$RUNNER_TEMP/cambium-demo-result.json"
+      - name: Restart with retained volumes and repeat the checks
+        run: |
+          docker compose restart cambium enroute
+          docker compose up -d --wait
+          python3 scripts/verify_compose.py --credential-file .cambium-bootstrap.json --result-file "$RUNNER_TEMP/cambium-demo-result.json"
+      - name: Show service logs on failure
+        if: failure()
+        run: docker compose logs --tail 100 cambium enroute
+      - name: Remove the disposable deployment
+        if: always()
+        run: docker compose down --volumes --remove-orphans

@@ -4,8 +4,8 @@ The workspace includes API and backend contracts, a SQLite metadata store,
 token delegation and authorization, CI, license checks, and reusable git path
 fixtures. The Enroute adapter, signed-hook translation, and shared operation
 layer are implemented, together with the HTTP/MCP binary and signed Git policy.
-The generation lifecycle and container composition are still in progress.
-See the [local setup](local-development.md) to run the current service.
+The generation lifecycle and local container composition complete the Phase 1a
+slice. See the [container quickstart](quickstart.md) or [local setup](local-development.md).
 
 ## Prerequisites
 
@@ -36,7 +36,8 @@ The protocol crate validates typed IDs and byte-field pairs and owns the
 and git policy traits, including the durable seal required by ADR-0013. The
 store crate implements SQLite migrations and tenant-scoped metadata and token
 operations. The server crate implements strict shared requests, repository and
-identity operations, changesets, raw-object reads, and durable idempotency. The
+identity operations, changesets, raw-object reads, durable idempotency, branch
+expiry, and recoverable generation compaction. The
 `cambium` binary mounts those operations through HTTP and MCP and implements
 private signed-hook policy over the same principal resolution.
 
@@ -120,7 +121,8 @@ script applies only that patch to a fresh checkout and verifies source drift.
 The [patch workflow](../.github/workflows/enroute.yml) tests replicated state,
 restart and snapshot persistence, real git writes racing with a seal, and
 storage reclamation of late uploads. This verifies the backend primitive;
-Cambium's generation lifecycle still requires its own integration tests.
+Cambium's separate [lifecycle tests](branch-lifecycle.md#evidence) verify the
+application state machine and physical reclamation over those primitives.
 
 The adapter implements the storage operations and verifies every raw object's
 size and SHA-1. It uses the pinned protobuf sources and signature verifier.
@@ -176,8 +178,10 @@ An optional official MCP SDK client checks interoperability as described in the
 local setup. The Enroute CI job pins Git 2.50.0 to upstream commit
 `16bd9f20a403117f2e0d9bcda6c6e621d3763e77` and also runs the official MCP SDK
 2.3.0 check. The binary test verifies process ownership, encrypted replay after
-restart, and immediate host-admin revocation. Container exposure and ephemeral
-reclamation require later tests.
+restart, and immediate host-admin revocation. The [compose workflow](../.github/workflows/compose.yml)
+builds the local images, runs the documented MCP agent loop, probes gRPC from an
+outside container, checks private metadata mounts, observes physical layer
+cleanup, and repeats checks after a process restart with retained volumes.
 
 ## Metadata and authorization tests
 

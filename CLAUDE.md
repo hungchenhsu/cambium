@@ -6,7 +6,7 @@ This file is the single source of truth for repository rules and the repository 
 
 - `cambium` is the code name for an open-source, agent-first layer for git repositories, written in Rust, over pluggable git storage engines (Enroute first). The final product name will be chosen before public launch.
 - **The gap it fills:** forges and object-storage git engines each cover part of what agent fleets need ([docs/comparison.md](docs/comparison.md)). Cambium combines the rest into one lifecycle over storage engines that can be swapped: tenant isolation, human and agent identities, ephemeral branches whose storage is reclaimed, an agent API and MCP server, provenance, and merge policy. Judge every scope decision against this gap. Do not rebuild what a storage backend already does well.
-- **Stage:** Phase 1a in progress. A runnable HTTP/MCP service, signed Git authorization, SQLite tenancy, Enroute storage, and durable idempotency exist. Ephemeral branch expiry and generation reclamation are implemented and tested against the real backend. Container composition is being validated. See `ROADMAP.md`.
+- **Stage:** Phase 1a is implemented: HTTP/MCP, signed Git authorization, SQLite tenancy, durable idempotency, ephemeral branches, and generation reclamation. A local container quickstart and an MCP agent example exercise the complete slice; first-time source builds take additional time. See `ROADMAP.md`.
 - The repository is public. Contributions follow `CONTRIBUTING.md` and require a DCO sign-off.
 
 ## 2. Language
@@ -22,6 +22,7 @@ Everything committed to this repository is in English: code, comments, documenta
 - `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`: community policies.
 - `.github/`: issue and pull request templates, `CODEOWNERS`, and the DCO workflow.
 - `crates/`: protocol, backend contracts, conformance fixtures, SQLite store, Enroute adapter, and shared operations. Layout and boundaries: `docs/development.md`.
+- `compose.yaml`, `Dockerfile`, `deploy/`, and `docs/quickstart.md`: local container deployment; `examples/agent-loop.py` and `scripts/verify_compose.py` verify the agent loop and network/storage boundaries.
 - `scripts/check_licenses.py`, `deny*.toml`: workspace license boundaries and dependency allow-lists.
 - `LICENSE-APACHE`, `LICENSE-AGPL`: verbatim license texts. Never edit them. ADR-0003 says which license applies where.
 - `AGENTS.md`: thin adapter for other agents, plus the Codex review guidelines.
