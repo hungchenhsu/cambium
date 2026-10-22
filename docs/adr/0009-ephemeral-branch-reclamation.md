@@ -1,6 +1,6 @@
 # ADR-0009: Reclaiming storage from expired ephemeral branches
 
-- **Status:** Accepted; final reconciliation, deletion, and timing rules are superseded by [ADR-0013](0013-sealed-generation-reclamation.md), and recoverable branch creation by [ADR-0015](0015-durable-ref-creation-receipts.md)
+- **Status:** Accepted; final reconciliation, deletion, and timing rules are superseded by [ADR-0013](0013-sealed-generation-reclamation.md), recoverable branch creation by [ADR-0015](0015-durable-ref-creation-receipts.md), and rescue naming by [ADR-0016](0016-multiple-rescue-values.md)
 - **Date:** 2026-10-18
 
 ## Context

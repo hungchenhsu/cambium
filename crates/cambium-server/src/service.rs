@@ -15,7 +15,8 @@ use cambium_protocol::{
 };
 use cambium_store::{
     IdentityRecord, RepositoryRecord, StoreError, TokenHash,
-    operations::{Claim, Completion, OperationKey, OperationsStore},
+    compaction::CompactionStore,
+    operations::{Claim, Completion, OperationKey},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -42,12 +43,15 @@ impl Clock for SystemClock {
 type RepositoryLocks = HashMap<(TenantId, RepositoryId), Weak<AsyncMutex<()>>>;
 
 pub struct App {
-    pub store: Arc<dyn OperationsStore>,
+    pub store: Arc<dyn CompactionStore>,
     pub backend: Arc<dyn Backend>,
     pub clock: Arc<dyn Clock>,
+    pub lifecycle: crate::lifecycle::LifecycleSettings,
+    pub compaction: crate::compaction::CompactionSettings,
     cipher: ResponseCipher,
     git_base_url: String,
     locks: Mutex<RepositoryLocks>,
+    lifecycle_locks: Mutex<RepositoryLocks>,
 }
 
 #[derive(Clone, Debug)]
@@ -69,16 +73,16 @@ impl Reply {
     }
 }
 
-struct Reservation<'a> {
+pub(crate) struct Reservation<'a> {
     principal: &'a Principal,
     key: &'a OperationKey,
     run_id: &'a RequestId,
-    saved: Option<Value>,
+    pub(crate) saved: Option<Value>,
 }
 
 impl App {
     pub fn new(
-        store: Arc<dyn OperationsStore>,
+        store: Arc<dyn CompactionStore>,
         backend: Arc<dyn Backend>,
         clock: Arc<dyn Clock>,
         response_key: &[u8; 32],
@@ -88,9 +92,12 @@ impl App {
             store,
             backend,
             clock,
+            lifecycle: crate::lifecycle::LifecycleSettings::default(),
+            compaction: crate::compaction::CompactionSettings::default(),
             cipher: ResponseCipher::new(response_key),
             git_base_url: git_base_url.trim_end_matches('/').to_owned(),
             locks: Mutex::new(HashMap::new()),
+            lifecycle_locks: Mutex::new(HashMap::new()),
         }
     }
 
@@ -108,6 +115,10 @@ impl App {
             .deployment_recover_operations(self.clock.now_ms())
             .await
             .map_err(store_error)?;
+        self.store
+            .deployment_recover_compactions(self.clock.now_ms())
+            .await
+            .map_err(store_error)?;
         self.resume_repositories().await
     }
 
@@ -118,6 +129,7 @@ impl App {
             .await
             .map_err(store_error)?
         {
+            let _lifecycle = self.lifecycle_lock(&record.tenant_id, &record.id).await?;
             let _guard = self.repository_lock(&record.tenant_id, &record.id).await?;
             let record = self
                 .store
@@ -332,6 +344,26 @@ impl App {
         Ok(lock.lock_owned().await)
     }
 
+    pub async fn lifecycle_lock(
+        &self,
+        tenant: &TenantId,
+        repository: &RepositoryId,
+    ) -> Result<OwnedMutexGuard<()>, ApiError> {
+        let lock = {
+            let mut locks = self.lifecycle_locks.lock().map_err(|_| internal())?;
+            locks.retain(|_, value| value.strong_count() > 0);
+            let entry = locks
+                .entry((tenant.clone(), repository.clone()))
+                .or_default();
+            let lock = entry
+                .upgrade()
+                .unwrap_or_else(|| Arc::new(AsyncMutex::new(())));
+            *entry = Arc::downgrade(&lock);
+            lock
+        };
+        Ok(lock.lock_owned().await)
+    }
+
     pub async fn authorized_repository(
         &self,
         principal: &Principal,
@@ -400,7 +432,11 @@ impl App {
         Ok(())
     }
 
-    async fn save(&self, reservation: &Reservation<'_>, value: &Value) -> Result<(), ApiError> {
+    pub(crate) async fn save(
+        &self,
+        reservation: &Reservation<'_>,
+        value: &Value,
+    ) -> Result<(), ApiError> {
         self.store
             .reserve_operation(
                 reservation.principal,
@@ -419,6 +455,14 @@ impl App {
         operation: &Operation,
         mut reservation: Option<Reservation<'_>>,
     ) -> Result<Value, ApiError> {
+        let _lifecycle = if let Operation::DeleteRepository(input) = operation {
+            Some(
+                self.lifecycle_lock(&principal.tenant_id, &input.repository_id)
+                    .await?,
+            )
+        } else {
+            None
+        };
         let _guard = if operation.mutating() {
             if let Some(id) = operation.repository() {
                 Some(self.repository_lock(&principal.tenant_id, id).await?)
@@ -528,6 +572,31 @@ impl App {
                     .await?;
                 Ok(json!({"deleted": true, "repository_id": input.repository_id}))
             }
+            Operation::RequestCompaction(input) => {
+                let repository = self
+                    .readable_repository(&principal, &input.repository_id)
+                    .await?;
+                self.request_compaction(
+                    &principal,
+                    &repository,
+                    reservation.as_ref().ok_or_else(internal)?,
+                )
+                .await
+            }
+            Operation::GetReclamation(input) => {
+                let repository = self
+                    .readable_repository(&principal, &input.repository_id)
+                    .await?;
+                self.reclamation_json(&repository, input).await
+            }
+            Operation::CreateEphemeralBranch(_)
+            | Operation::GetBranch(_)
+            | Operation::ListBranches(_)
+            | Operation::ExtendBranch(_)
+            | Operation::PromoteBranch(_) => {
+                self.execute_branch(&principal, operation, reservation.as_ref())
+                    .await
+            }
             Operation::WriteChangeset(input) => {
                 self.write_changeset(
                     &principal,
@@ -539,6 +608,8 @@ impl App {
             Operation::ReadFile(input) => {
                 let repository = self
                     .readable_repository(&principal, &input.repository_id)
+                    .await?;
+                self.check_branch_available(&repository, &input.revision)
                     .await?;
                 let backend_id = backend_id(&repository)?;
                 let objects = GitObjects {
@@ -637,7 +708,7 @@ impl App {
             .map_err(store_error)
     }
 
-    async fn readable_repository(
+    pub(crate) async fn readable_repository(
         &self,
         principal: &Principal,
         id: &RepositoryId,
@@ -723,6 +794,7 @@ impl App {
         }
         let backend_id = backend_id(&repository)?;
         let branch = validate_branch(&input.branch)?;
+        self.check_branch_available(&repository, &branch).await?;
         let request: CommitRequest = if let Some(saved) = &reservation.saved {
             serde_json::from_value(saved["commit"].clone()).map_err(|_| internal())?
         } else {
@@ -798,6 +870,16 @@ impl App {
                 }
                 error
             })?;
+        // Activity is informational and cannot turn an applied write into a failure.
+        let _ = self
+            .store
+            .record_branch_activity(
+                principal,
+                &repository.id,
+                std::slice::from_ref(&branch),
+                self.clock.now_ms(),
+            )
+            .await;
         let objects = GitObjects {
             backend: self.backend.as_ref(),
             repository: &backend_id,
@@ -825,6 +907,8 @@ impl App {
         check_limit(input.limit)?;
         let repository = self
             .readable_repository(principal, &input.repository_id)
+            .await?;
+        self.check_branch_available(&repository, &input.revision)
             .await?;
         let backend_id = backend_id(&repository)?;
         let objects = GitObjects {
@@ -876,6 +960,9 @@ impl App {
         let repository = self
             .readable_repository(principal, &input.repository_id)
             .await?;
+        self.check_branch_available(&repository, &input.from)
+            .await?;
+        self.check_branch_available(&repository, &input.to).await?;
         let backend_id = backend_id(&repository)?;
         let objects = GitObjects {
             backend: self.backend.as_ref(),
@@ -977,10 +1064,10 @@ fn page(
     }
     Ok(result)
 }
-fn encode_cursor<T: Serialize>(value: &T) -> Result<String, ApiError> {
+pub(crate) fn encode_cursor<T: Serialize>(value: &T) -> Result<String, ApiError> {
     Ok(URL_SAFE_NO_PAD.encode(serde_json::to_vec(value).map_err(|_| internal())?))
 }
-fn decode_cursor<T: for<'de> Deserialize<'de>>(value: &str) -> Result<T, ApiError> {
+pub(crate) fn decode_cursor<T: for<'de> Deserialize<'de>>(value: &str) -> Result<T, ApiError> {
     if value.len() > 8192 {
         return Err(ApiError::invalid("page_token", "Cursor is too long"));
     }
@@ -990,7 +1077,7 @@ fn decode_cursor<T: for<'de> Deserialize<'de>>(value: &str) -> Result<T, ApiErro
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
         .ok_or_else(|| ApiError::invalid("page_token", "Invalid cursor"))
 }
-fn check_limit(limit: u32) -> Result<(), ApiError> {
+pub(crate) fn check_limit(limit: u32) -> Result<(), ApiError> {
     if !(1..=1000).contains(&limit) {
         return Err(ApiError::invalid("limit", "Expected 1 to 1000"));
     }

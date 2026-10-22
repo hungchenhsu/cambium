@@ -17,7 +17,9 @@ use crate::{
     StoreResult, TokenHash, TokenSettings,
 };
 
+mod compaction;
 mod deployment;
+mod lifecycle;
 mod operations;
 
 pub struct SqliteStore {

@@ -2,8 +2,9 @@
 
 This setup runs the current Phase 1a service on one trusted development host.
 It requires the [development prerequisites](development.md), including Git 2.50
-or later. All listeners bind to loopback. The container quickstart and ephemeral
-branch reclamation are still being implemented; this is not a production setup.
+or later. All listeners bind to loopback. Ephemeral branches and generation
+reclamation run in the service worker; see [branch lifecycle](branch-lifecycle.md).
+This is a development setup, not a production deployment.
 
 ## Build and initialize
 

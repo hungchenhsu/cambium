@@ -7,6 +7,8 @@ use cambium_protocol::{
 };
 use serde::{Deserialize, Serialize};
 
+pub mod compaction;
+pub mod lifecycle;
 pub mod operations;
 pub mod sqlite;
 pub use sqlite::SqliteStore;

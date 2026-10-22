@@ -14,7 +14,7 @@ use crate::service::{App, backend_id};
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Context {
+struct ClientContext {
     tenant_id: TenantId,
     token_id: TokenId,
     identity_id: IdentityId,
@@ -22,22 +22,61 @@ struct Context {
     backend_id: BackendRepositoryId,
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum Context {
+    Client(ClientContext),
+    Copy(cambium_store::compaction::CopyToken),
+}
+
 pub struct Policy {
     pub app: Arc<App>,
 }
 
 impl Policy {
-    async fn context(
+    async fn internal_context(
         &self,
         bytes: &[u8],
         repository: &BackendRepositoryId,
-        scope: Scope,
-    ) -> Result<(Context, Principal), GitDenial> {
+    ) -> Result<bool, GitDenial> {
         if bytes.len() > 8192 {
             return Err(GitDenial::Unauthorized);
         }
         let context: Context =
             serde_json::from_slice(bytes).map_err(|_| GitDenial::Unauthorized)?;
+        let Context::Copy(context) = context else {
+            return Ok(false);
+        };
+        let current = self
+            .app
+            .store
+            .revalidate_copy_token(&context.tenant_id, &context.id, self.app.clock.now_ms())
+            .await
+            .map_err(|e| denial(e.code()))?;
+        if current.destination_backend_id != repository.as_str()
+            || current.compaction_id != context.compaction_id
+            || current.repository_id != context.repository_id
+            || current.destination_backend_id != context.destination_backend_id
+        {
+            return Err(GitDenial::NotFound);
+        }
+        Ok(true)
+    }
+
+    async fn context(
+        &self,
+        bytes: &[u8],
+        repository: &BackendRepositoryId,
+        scope: Scope,
+    ) -> Result<(ClientContext, Principal), GitDenial> {
+        if bytes.len() > 8192 {
+            return Err(GitDenial::Unauthorized);
+        }
+        let context: Context =
+            serde_json::from_slice(bytes).map_err(|_| GitDenial::Unauthorized)?;
+        let Context::Client(context) = context else {
+            return Err(GitDenial::Unauthorized);
+        };
         if &context.backend_id != repository {
             return Err(GitDenial::NotFound);
         }
@@ -75,6 +114,34 @@ impl GitPolicy for Policy {
             return Err(GitDenial::Unauthorized);
         }
         let secret = git_credential(values[0])?;
+        if secret.starts_with("cmi_") {
+            let hash = crate::internal_copy::copy_token_hash(&secret)
+                .map_err(|_| GitDenial::Unauthorized)?;
+            let token = self
+                .app
+                .store
+                .authenticate_copy_token(hash, self.app.clock.now_ms())
+                .await
+                .map_err(|e| denial(e.code()))?;
+            let path = request.path.strip_prefix('/').unwrap_or(&request.path);
+            let path = path.strip_suffix(".git").unwrap_or(path);
+            if path != token.destination_backend_id {
+                return Err(GitDenial::NotFound);
+            }
+            let repository = token
+                .destination_backend_id
+                .clone()
+                .try_into()
+                .map_err(|_| GitDenial::Unavailable)?;
+            let actor = format!("copy:{}", token.compaction_id);
+            let context =
+                serde_json::to_vec(&Context::Copy(token)).map_err(|_| GitDenial::Unavailable)?;
+            return Ok(GitGrant {
+                repository,
+                actor,
+                context,
+            });
+        }
         // Authentication precedes parsing or looking up a repository path.
         let principal = self
             .app
@@ -114,7 +181,7 @@ impl GitPolicy for Policy {
             return Err(GitDenial::NotFound);
         }
         let backend_id = backend_id(&repository).map_err(|_| GitDenial::Unavailable)?;
-        let context = Context {
+        let context = ClientContext {
             tenant_id: principal.tenant_id,
             token_id: principal.token_id,
             identity_id: principal.actor.identity_id.clone(),
@@ -124,7 +191,8 @@ impl GitPolicy for Policy {
         Ok(GitGrant {
             repository: backend_id,
             actor: principal.actor.identity_id.to_string(),
-            context: serde_json::to_vec(&context).map_err(|_| GitDenial::Unavailable)?,
+            context: serde_json::to_vec(&Context::Client(context))
+                .map_err(|_| GitDenial::Unavailable)?,
         })
     }
 
@@ -134,10 +202,23 @@ impl GitPolicy for Policy {
         repository: &BackendRepositoryId,
         refs: &[String],
     ) -> Result<Vec<String>, GitDenial> {
-        self.context(bytes, repository, Scope::RepoRead).await?;
+        if self.internal_context(bytes, repository).await? {
+            return Ok(refs.to_vec());
+        }
+        let (context, _) = self.context(bytes, repository, Scope::RepoRead).await?;
+        let blocked = self
+            .app
+            .store
+            .blocked_branch_names(
+                &context.tenant_id,
+                &context.repository_id,
+                self.app.clock.now_ms(),
+            )
+            .await
+            .map_err(|e| denial(e.code()))?;
         Ok(refs
             .iter()
-            .filter(|name| !name.starts_with("refs/cambium/"))
+            .filter(|name| !name.starts_with("refs/cambium/") && !blocked.contains(name))
             .cloned()
             .collect())
     }
@@ -148,6 +229,9 @@ impl GitPolicy for Policy {
         repository: &BackendRepositoryId,
         commands: &[GitCommand],
     ) -> Result<Vec<Option<String>>, GitDenial> {
+        if self.internal_context(bytes, repository).await? {
+            return Ok(vec![None; commands.len()]);
+        }
         let (context, principal) = self.context(bytes, repository, Scope::RepoWrite).await?;
         let current = self
             .app
@@ -200,6 +284,9 @@ impl GitPolicy for Policy {
         repository: &BackendRepositoryId,
         commands: &[GitCommand],
     ) -> Result<(), GitDenial> {
+        if self.internal_context(bytes, repository).await? {
+            return Ok(());
+        }
         // No lifecycle decision depends on this best-effort notification.
         let (context, principal) = self.context(bytes, repository, Scope::RepoWrite).await?;
         self.app

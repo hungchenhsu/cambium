@@ -32,6 +32,10 @@ impl OperationsStore for SqliteStore {
             .bind(now_ms)
             .execute(&self.writer)
             .await?;
+        sqlx::query("DELETE FROM internal_tokens WHERE expires_at_ms <= ?")
+            .bind(now_ms)
+            .execute(&self.writer)
+            .await?;
         Ok(())
     }
 
@@ -41,7 +45,7 @@ impl OperationsStore for SqliteStore {
         repository: &RepositoryId,
         now_ms: i64,
     ) -> StoreResult<Vec<String>> {
-        Ok(sqlx::query_scalar("SELECT DISTINCT b.name FROM branches b WHERE b.tenant_id = ? AND b.repository_id = ? AND (b.state = 'creating' OR b.state = 'expiring' OR (b.state = 'active' AND b.expires_at_ms <= ?) OR (EXISTS(SELECT 1 FROM expiries e WHERE e.tenant_id = b.tenant_id AND e.branch_id = b.id AND e.reclaimed_at_ms IS NULL) AND NOT EXISTS(SELECT 1 FROM branches live WHERE live.tenant_id = b.tenant_id AND live.repository_id = b.repository_id AND live.name = b.name AND live.state = 'active' AND live.expires_at_ms > ?)))")
+        Ok(sqlx::query_scalar("SELECT DISTINCT b.name FROM branches b WHERE b.tenant_id = ? AND b.repository_id = ? AND (b.state = 'creating' OR b.state = 'expiring' OR (b.state = 'active' AND b.expires_at_ms <= ?) OR (EXISTS(SELECT 1 FROM expiries e WHERE e.tenant_id = b.tenant_id AND e.branch_id = b.id AND e.reclaimed_at_ms IS NULL) AND NOT EXISTS(SELECT 1 FROM branches live WHERE live.tenant_id = b.tenant_id AND live.repository_id = b.repository_id AND live.name = b.name AND live.rowid > b.rowid AND (live.state = 'promoted' OR (live.state = 'active' AND live.expires_at_ms > ?)))))")
             .bind(tenant.as_str()).bind(repository.as_str()).bind(now_ms).bind(now_ms).fetch_all(&self.readers).await?)
     }
     async fn get_repository_including_deleted(
@@ -188,6 +192,12 @@ impl OperationsStore for SqliteStore {
         // Preserve the requesting actor while recovery completes its operation.
         sqlx::query("UPDATE generations SET state = 'deleted', updated_at_ms = ? WHERE tenant_id = ? AND repository_id = ? AND EXISTS(SELECT 1 FROM repositories WHERE tenant_id = ? AND id = ? AND state = 'deleting')")
             .bind(now_ms).bind(tenant.as_str()).bind(repository.as_str()).bind(tenant.as_str()).bind(repository.as_str()).execute(&mut *tx).await?;
+        sqlx::query("DELETE FROM internal_tokens WHERE tenant_id = ? AND compaction_id IN (SELECT id FROM compactions WHERE tenant_id = ? AND repository_id = ?)")
+            .bind(tenant.as_str()).bind(tenant.as_str()).bind(repository.as_str()).execute(&mut *tx).await?;
+        sqlx::query("UPDATE compactions SET stage = 'deleted', completed_at_ms = ?, updated_at_ms = ?, updated_by = 'idn_00000000000000000000000000', updated_by_kind = 'system' WHERE tenant_id = ? AND repository_id = ? AND completed_at_ms IS NULL")
+            .bind(now_ms).bind(now_ms).bind(tenant.as_str()).bind(repository.as_str()).execute(&mut *tx).await?;
+        sqlx::query("UPDATE expiries SET reclaimed_at_ms = ?, updated_at_ms = ?, updated_by = 'idn_00000000000000000000000000', updated_by_kind = 'system' WHERE tenant_id = ? AND repository_id = ? AND reclaimed_at_ms IS NULL")
+            .bind(now_ms).bind(now_ms).bind(tenant.as_str()).bind(repository.as_str()).execute(&mut *tx).await?;
         sqlx::query("UPDATE repositories SET state = 'deleted', updated_at_ms = ? WHERE tenant_id = ? AND id = ? AND state = 'deleting'")
             .bind(now_ms).bind(tenant.as_str()).bind(repository.as_str()).execute(&mut *tx).await?;
         tx.commit().await?;

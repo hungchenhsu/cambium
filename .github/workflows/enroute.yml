@@ -94,5 +94,9 @@ jobs:
           ENROUTE_BIN: ${{ github.workspace }}/target/enroute/target/debug/enroute
           MCP_CLIENT_PYTHON: ${{ runner.temp }}/mcp-client/bin/python
         run: cargo test --locked -p cambium-server --test transports -- --ignored
+      - name: Test expiry, generation recovery, and storage reclamation
+        env:
+          ENROUTE_BIN: ${{ github.workspace }}/target/enroute/target/debug/enroute
+        run: cargo test --locked -p cambium-server --test lifecycle -- --ignored
       - name: Verify source remained pinned
         run: python3 scripts/prepare_enroute.py --verify

@@ -1,6 +1,6 @@
 # cambium
 
-> **Code name, pre-alpha.** Cambium has a runnable HTTP/MCP service, signed Git authorization over Enroute, and durable idempotency. Ephemeral branch reclamation and the one-command container quickstart are still in progress. See the [local development setup](docs/local-development.md).
+> **Code name, pre-alpha.** Cambium has a runnable HTTP/MCP service, signed Git authorization over Enroute, and durable idempotency. Ephemeral branches and generation reclamation are implemented; the one-command container quickstart is being validated. See the [local development setup](docs/local-development.md).
 > The final product name will be chosen before a public launch.
 
 [繁體中文](README.zh-TW.md)

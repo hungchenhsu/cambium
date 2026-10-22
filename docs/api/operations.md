@@ -29,6 +29,13 @@ prefix. List limits default to 100 and cannot exceed 1000.
 | `read_file` | `repository_id`, `path` or `path_b64`, `revision?` (HEAD), `always_base64?` (false) | repo:read |
 | `list_tree` | `repository_id`, `revision?` (HEAD), `recursive?` (true), `limit?`, `page_token?` | repo:read |
 | `diff` | `repository_id`, `from`, `to`, `limit?`, `page_token?` | repo:read |
+| `create_ephemeral_branch` | `repository_id`, `name`, `start_commit`, `ttl_seconds?` (3600) | repo:write |
+| `get_branch` | `repository_id`, `branch_id` | repo:read |
+| `list_branches` | `repository_id`, `limit?`, `page_token?` | repo:read |
+| `extend_branch` | `repository_id`, `branch_id`, `ttl_seconds` | repo:write |
+| `promote_branch` | `repository_id`, `branch_id` | repo:write |
+| `request_compaction` | `repository_id` | repo:admin |
+| `get_reclamation` | `repository_id`, `compaction_id?`, `limit?`, `page_token?` | repo:read |
 | `create_identity` | `kind` (human or agent), `name`, `owner_id?` (required for agent) | tenant:admin |
 | `get_identity` | `identity_id` | tenant:admin |
 | `mint_token` | `identity_id`, `scope`, `repositories?`, `ttl_seconds?` (3600) | Own identity with narrower privileges; tenant:admin may also mint for agents |
@@ -70,6 +77,20 @@ Reads accept a full object ID, `HEAD`, a full ref, or a short branch name.
 responses use `entries`, `truncated`, and optional `next_page_token`; cursors are
 bound to the repository, query, and resolved revision. Follow a cursor with the
 same query. No request returns a partial tree as though it were complete.
+
+## Ephemeral branches
+
+Create a branch from a full commit ID. TTL values are positive and capped by
+`branches.max_ttl_seconds` (seven days by default). Extension never shortens the
+current deadline; promotion makes the ref permanent. Expired branches cannot be
+extended or promoted. Until reclamation or explicit name reuse, reads and writes
+by their names return `branch_expired`. Raw object IDs remain readable until
+their data is reclaimed.
+
+Reclamation is asynchronous. `request_compaction` returns a compaction record;
+`get_reclamation` returns repository status and its latest compaction, including
+paginated conflict/rescue mappings. See [branch lifecycle](../branch-lifecycle.md)
+for ownership, recovery, configuration, and timing.
 
 ## MCP transport
 

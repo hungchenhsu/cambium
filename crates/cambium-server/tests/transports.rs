@@ -2,11 +2,15 @@ mod common;
 
 use std::{path::Path, process::Command, sync::Arc};
 
-use cambium_backend::git_policy::{GitCommand, GitDenial, GitOperation, GitPolicy, GitRequest};
-use cambium_backend_enroute::{hooks::HookAdapter, signature::SigningKey};
+use cambium_backend::{
+    Backend as _,
+    git_policy::{GitCommand, GitDenial, GitOperation, GitPolicy, GitRequest},
+};
+use cambium_backend_enroute::{EnrouteBackend, hooks::HookAdapter, signature::SigningKey};
 use cambium_protocol::RepositoryId;
 use cambium_server::{
     git_policy::Policy,
+    internal_copy::CopyTokens,
     secrets::{new_token, token_hash},
     service::{App, Clock, SystemClock},
     transport::{PublicState, hook_router, public_router},
@@ -121,13 +125,27 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
     }
     let (token, principal) = &users[0];
     let other = &users[1].0;
-    let app = Arc::new(App::new(
+    let clock = Arc::new(SystemClock);
+    assert!(server.backend.capabilities().durable_seal);
+    let backend = EnrouteBackend::connect(
+        &server.api,
+        &server.git,
+        Some(Arc::new(CopyTokens {
+            store: store.clone(),
+            clock: clock.clone(),
+        })),
+    )
+    .await
+    .unwrap();
+    let mut app = App::new(
         store.clone(),
-        Arc::new(server.backend.clone()),
-        Arc::new(SystemClock),
+        Arc::new(backend),
+        clock,
         &[51; 32],
         server.git.clone(),
-    ));
+    );
+    app.compaction.drain_ms = 0;
+    let app = Arc::new(app);
     let policy = Arc::new(Policy { app: app.clone() });
     let adapter = Arc::new(
         HookAdapter::new(vec![signing.verifying_key()], &endpoint, policy.clone()).unwrap(),
@@ -298,7 +316,7 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
     let initialized = api.rpc(token, "initialize", json!({"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "test", "version": "1"}})).await;
     assert_eq!(initialized["result"]["protocolVersion"], "2025-11-25");
     let tools = api.rpc(token, "tools/list", json!({})).await;
-    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 13);
+    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 20);
     for tool in tools["result"]["tools"].as_array().unwrap() {
         assert_eq!(tool["inputSchema"]["additionalProperties"], false);
         assert_eq!(
@@ -404,6 +422,75 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
     let write = &write["result"]["structuredContent"];
     assert_eq!(api.success(token, "write_changeset", change).await, *write);
     let first = write["commit_id"].as_str().unwrap();
+    let ephemeral = api.success(token, "create_ephemeral_branch", json!({"repository_id": repo, "name": "transport-ephemeral", "start_commit": first, "ttl_seconds": 60})).await;
+    let branch_id = &ephemeral["branch_id"];
+    for (name, arguments) in [
+        (
+            "create_ephemeral_branch",
+            json!({"repository_id": repo, "name": "other", "start_commit": first}),
+        ),
+        (
+            "get_branch",
+            json!({"repository_id": repo, "branch_id": branch_id}),
+        ),
+        ("list_branches", json!({"repository_id": repo})),
+        ("request_compaction", json!({"repository_id": repo})),
+        ("get_reclamation", json!({"repository_id": repo})),
+        (
+            "extend_branch",
+            json!({"repository_id": repo, "branch_id": branch_id, "ttl_seconds": 120}),
+        ),
+        (
+            "promote_branch",
+            json!({"repository_id": repo, "branch_id": branch_id}),
+        ),
+    ] {
+        assert_eq!(
+            api.operation(other, name, arguments.clone()).await.status(),
+            404
+        );
+        let denied = api
+            .rpc(
+                other,
+                "tools/call",
+                json!({"name": name, "arguments": arguments}),
+            )
+            .await;
+        assert_eq!(
+            denied["result"]["structuredContent"]["error"]["code"],
+            "not_found"
+        );
+    }
+    for (name, arguments) in [
+        (
+            "get_branch",
+            json!({"repository_id": repo, "branch_id": branch_id}),
+        ),
+        ("list_branches", json!({"repository_id": repo})),
+        (
+            "extend_branch",
+            json!({"repository_id": repo, "branch_id": branch_id, "ttl_seconds": 120, "idempotency_key": "extend-across-transports"}),
+        ),
+        (
+            "promote_branch",
+            json!({"repository_id": repo, "branch_id": branch_id}),
+        ),
+    ] {
+        let result = api
+            .rpc(
+                token,
+                "tools/call",
+                json!({"name": name, "arguments": arguments.clone()}),
+            )
+            .await;
+        assert_eq!(result["result"]["isError"], false, "{result}");
+        if name == "extend_branch" {
+            assert_eq!(
+                api.success(token, name, arguments).await,
+                result["result"]["structuredContent"]
+            );
+        }
+    }
     let read = api
         .success(
             token,
@@ -531,6 +618,50 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
         &["push", &absent, "HEAD:main"],
         false,
     );
+
+    assert_eq!(
+        api.operation(
+            read_token,
+            "request_compaction",
+            json!({"repository_id": repo})
+        )
+        .await
+        .status(),
+        403
+    );
+    api.success(token, "request_compaction", json!({"repository_id": repo}))
+        .await;
+    for _ in 0..8 {
+        policy.app.run_lifecycle_once().await.unwrap();
+    }
+    let reclaimed = api
+        .rpc(
+            read_token,
+            "tools/call",
+            json!({"name": "get_reclamation", "arguments": {"repository_id": repo}}),
+        )
+        .await;
+    assert_eq!(reclaimed["result"]["isError"], false, "{reclaimed}");
+    assert_eq!(
+        reclaimed["result"]["structuredContent"]["active_generation"],
+        2
+    );
+    git(
+        directory.path(),
+        Some(read_token),
+        &["clone", &project_url, "after-compaction"],
+        true,
+    );
+    assert_eq!(
+        git(
+            &directory.path().join("after-compaction"),
+            None,
+            &["rev-parse", "HEAD"],
+            true
+        ),
+        second
+    );
+    git(&checkout, Some(read_token), &["fetch", "origin"], true);
 
     let writer = api.success(token, "mint_token", json!({"identity_id": principal.actor.identity_id, "scope": "repo:write", "repositories": [repo]})).await;
     let writer_token = writer["token"].as_str().unwrap();

@@ -27,6 +27,9 @@ pub struct Config {
     pub hook_public_keys: Vec<String>,
     pub human_max_lifetime_seconds: u64,
     pub agent_max_lifetime_seconds: u64,
+    pub maintenance_interval_ms: u64,
+    pub branches: crate::lifecycle::LifecycleSettings,
+    pub compaction: crate::compaction::CompactionSettings,
 }
 
 impl Default for Config {
@@ -42,6 +45,9 @@ impl Default for Config {
             hook_public_keys: vec!["hook-public.pem".into()],
             human_max_lifetime_seconds: 30 * 24 * 3600,
             agent_max_lifetime_seconds: 24 * 3600,
+            maintenance_interval_ms: 1000,
+            branches: crate::lifecycle::LifecycleSettings::default(),
+            compaction: crate::compaction::CompactionSettings::default(),
         }
     }
 }
@@ -79,6 +85,27 @@ impl Config {
             return Err(ApiError::invalid(
                 "hook_public_keys",
                 "Configure one or two verification keys",
+            )
+            .into());
+        }
+        if !(1..=60_000).contains(&config.maintenance_interval_ms)
+            || config.branches.max_ttl_seconds == 0
+            || config.branches.max_ttl_seconds > (i64::MAX / 1000) as u64
+        {
+            return Err(ApiError::invalid(
+                "lifecycle",
+                "Expected positive TTL and a maintenance interval from 1 to 60000 milliseconds",
+            )
+            .into());
+        }
+        if config.compaction.max_delay_ms < 0
+            || config.compaction.max_expired <= 0
+            || config.compaction.settle_ms <= 0
+            || config.compaction.drain_ms < 0
+        {
+            return Err(ApiError::invalid(
+                "compaction",
+                "Expected nonnegative delays and positive expiry and settle thresholds",
             )
             .into());
         }
