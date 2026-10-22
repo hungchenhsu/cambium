@@ -51,6 +51,10 @@ jobs:
       - name: Install Enroute's pinned toolchain
         working-directory: target/enroute
         run: rustup show
+      - name: Install Git build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev
       - name: Build the minimum supported Git version
         run: |
           git init "$RUNNER_TEMP/git-2.50.0"

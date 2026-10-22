@@ -189,6 +189,88 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
         .await
         .unwrap();
     assert_eq!(origin.status(), 403);
+    assert!(!origin.headers().contains_key("access-control-allow-origin"));
+    for path in ["/mcp", "/v1/operations/list_repositories"] {
+        let preflight = api
+            .client
+            .request(reqwest::Method::OPTIONS, format!("{}{path}", api.base))
+            .header("origin", "https://allowed.example")
+            .header("access-control-request-method", "POST")
+            .header(
+                "access-control-request-headers",
+                "Authorization, Content-Type, MCP-Protocol-Version, Idempotency-Key",
+            )
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(preflight.status(), 204);
+        assert_eq!(
+            preflight.headers()["access-control-allow-origin"],
+            "https://allowed.example"
+        );
+        assert_eq!(preflight.headers()["access-control-allow-methods"], "POST");
+        assert!(
+            preflight.headers()["access-control-allow-headers"]
+                .to_str()
+                .unwrap()
+                .contains("authorization")
+        );
+        let anonymous = api
+            .client
+            .post(format!("{}{path}", api.base))
+            .header("origin", "https://allowed.example")
+            .json(&json!({}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(anonymous.status(), 401);
+        assert_eq!(
+            anonymous.headers()["access-control-allow-origin"],
+            "https://allowed.example"
+        );
+        let body = if path == "/mcp" {
+            json!({"jsonrpc": "2.0", "id": 10, "method": "ping"})
+        } else {
+            json!({})
+        };
+        let allowed = api
+            .client
+            .post(format!("{}{path}", api.base))
+            .bearer_auth(token)
+            .header("origin", "https://allowed.example")
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(allowed.status(), 200);
+        assert_eq!(
+            allowed.headers()["access-control-allow-origin"],
+            "https://allowed.example"
+        );
+        assert!(
+            allowed.headers()["access-control-expose-headers"]
+                .to_str()
+                .unwrap()
+                .contains("Request-Id")
+        );
+        for (origin, method, headers) in [
+            ("https://untrusted.example", "POST", "authorization"),
+            ("https://allowed.example", "DELETE", "authorization"),
+            ("https://allowed.example", "POST", "x-unapproved-header"),
+        ] {
+            let denied = api
+                .client
+                .request(reqwest::Method::OPTIONS, format!("{}{path}", api.base))
+                .header("origin", origin)
+                .header("access-control-request-method", method)
+                .header("access-control-request-headers", headers)
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(denied.status(), 403);
+            assert!(!denied.headers().contains_key("access-control-allow-origin"));
+        }
+    }
     let wrong_method = api
         .client
         .get(format!("{}/v1/operations/create_repository", api.base))

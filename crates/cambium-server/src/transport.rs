@@ -7,6 +7,7 @@ use axum::{
     body::{Body, to_bytes},
     extract::{Path, Request, State, rejection::PathRejection},
     http::{HeaderMap, HeaderValue, Method, StatusCode, header},
+    middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::any,
 };
@@ -36,6 +37,7 @@ pub fn public_router(state: PublicState) -> Router {
         .route("/v1/operations/{operation}", any(operation))
         .route("/mcp", any(mcp))
         .fallback(fallback)
+        .layer(middleware::from_fn_with_state(state.clone(), cors))
         .with_state(state)
 }
 
@@ -69,6 +71,81 @@ fn check_origin(state: &PublicState, headers: &HeaderMap) -> Result<(), ApiError
         return Err(ApiError::new(ErrorCode::PermissionDenied));
     }
     Ok(())
+}
+
+const CORS_HEADERS: &str =
+    "authorization, content-type, idempotency-key, mcp-protocol-version, accept";
+
+async fn cors(State(state): State<PublicState>, request: Request, next: Next) -> Response {
+    if let Err(error) = check_origin(&state, request.headers()) {
+        return reply_response(Reply::error(error, RequestId::new()));
+    }
+    let origin = request.headers().get(header::ORIGIN).cloned();
+    let preflight = request.method() == Method::OPTIONS
+        && origin.is_some()
+        && request
+            .headers()
+            .contains_key(header::ACCESS_CONTROL_REQUEST_METHOD);
+    let mut response = if preflight {
+        let methods: Vec<_> = request
+            .headers()
+            .get_all(header::ACCESS_CONTROL_REQUEST_METHOD)
+            .iter()
+            .collect();
+        let valid_method = methods.len() == 1 && methods[0] == "POST";
+        let valid_headers = request
+            .headers()
+            .get_all(header::ACCESS_CONTROL_REQUEST_HEADERS)
+            .iter()
+            .all(|value| {
+                value.to_str().is_ok_and(|value| {
+                    value.split(',').all(|name| {
+                        CORS_HEADERS
+                            .split(", ")
+                            .any(|allowed| allowed.eq_ignore_ascii_case(name.trim()))
+                    })
+                })
+            });
+        if !valid_method || !valid_headers {
+            return reply_response(Reply::error(
+                ApiError::new(ErrorCode::PermissionDenied),
+                RequestId::new(),
+            ));
+        }
+        let mut response = StatusCode::NO_CONTENT.into_response();
+        response.headers_mut().insert(
+            header::ACCESS_CONTROL_ALLOW_METHODS,
+            HeaderValue::from_static("POST"),
+        );
+        response.headers_mut().insert(
+            header::ACCESS_CONTROL_ALLOW_HEADERS,
+            HeaderValue::from_static(CORS_HEADERS),
+        );
+        response
+            .headers_mut()
+            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+        response
+    } else {
+        next.run(request).await
+    };
+    response.headers_mut().append(
+        header::VARY,
+        HeaderValue::from_static(
+            "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+        ),
+    );
+    if let Some(origin) = origin {
+        response
+            .headers_mut()
+            .insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+        response.headers_mut().insert(
+            header::ACCESS_CONTROL_EXPOSE_HEADERS,
+            HeaderValue::from_static(
+                "Request-Id, Idempotent-Replayed, Retry-After, MCP-Protocol-Version",
+            ),
+        );
+    }
+    response
 }
 
 fn idempotency_header(headers: &HeaderMap) -> Result<Option<String>, ApiError> {
@@ -122,7 +199,6 @@ async fn operation(
     request: Request,
 ) -> Response {
     let result = async {
-        check_origin(&state, request.headers())?;
         let token = authenticated(&state, request.headers()).await?;
         let Path(name) =
             path.map_err(|_| ApiError::invalid("operation", "Expected a UTF-8 operation name"))?;
@@ -187,9 +263,6 @@ fn json_response(status: u16, value: Value, request_id: &RequestId) -> Response 
 
 async fn mcp(State(state): State<PublicState>, request: Request) -> Response {
     let request_id = RequestId::new();
-    if let Err(error) = check_origin(&state, request.headers()) {
-        return reply_response(Reply::error(error, request_id));
-    }
     let token = match authenticated(&state, request.headers()).await {
         Ok(token) => token,
         Err(error) => return reply_response(Reply::error(error, request_id)),
