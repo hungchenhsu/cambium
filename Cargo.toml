@@ -40,6 +40,10 @@ ed25519-dalek = { version = "2", features = ["pem", "pkcs8"] }
 sfv = "0.14"
 url = "2"
 gix-validate = "0.13"
+gix-object = { version = "0.66", features = ["sha1"] }
+gix-hash = { version = "0.28", features = ["sha1"] }
+unicode-normalization = "0.1"
+chacha20poly1305 = "0.11"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

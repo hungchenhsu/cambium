@@ -10,6 +10,8 @@ on:
       - crates/cambium-backend/**
       - crates/cambium-backend-conformance/**
       - crates/cambium-protocol/**
+      - crates/cambium-server/**
+      - crates/cambium-store/**
       - Cargo.toml
       - Cargo.lock
   push:
@@ -22,6 +24,8 @@ on:
       - crates/cambium-backend/**
       - crates/cambium-backend-conformance/**
       - crates/cambium-protocol/**
+      - crates/cambium-server/**
+      - crates/cambium-store/**
       - Cargo.toml
       - Cargo.lock
   workflow_dispatch:
@@ -64,5 +68,9 @@ jobs:
         env:
           ENROUTE_BIN: ${{ github.workspace }}/target/enroute/target/debug/enroute
         run: cargo test --locked -p cambium-backend-enroute --test backend -- --ignored
+      - name: Test shared operations and retry boundaries
+        env:
+          ENROUTE_BIN: ${{ github.workspace }}/target/enroute/target/debug/enroute
+        run: cargo test --locked -p cambium-server --test service -- --ignored
       - name: Verify source remained pinned
         run: python3 scripts/prepare_enroute.py --verify

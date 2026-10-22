@@ -21,6 +21,7 @@ Decisions and scaffolding before any code.
 - [x] Tenancy and authentication model ([ADR-0011](docs/adr/0011-tenancy-and-authentication.md))
 - [x] API transport and error code registry ([ADR-0012](docs/adr/0012-api-transport-and-errors.md))
 - [x] Durable seal before final reconciliation and deletion ([ADR-0013](docs/adr/0013-sealed-generation-reclamation.md))
+- [x] Encrypted idempotency response replay, including token minting ([ADR-0014](docs/adr/0014-encrypted-idempotency-responses.md))
 
 **Scaffolding**
 
