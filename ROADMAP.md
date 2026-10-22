@@ -24,6 +24,7 @@ Decisions and scaffolding before any code.
 - [x] Encrypted idempotency response replay, including token minting ([ADR-0014](docs/adr/0014-encrypted-idempotency-responses.md))
 - [x] Multiple late-write rescue values ([ADR-0016](docs/adr/0016-multiple-rescue-values.md))
 - [x] Durable ref creation receipts for unambiguous branch ownership ([ADR-0015](docs/adr/0015-durable-ref-creation-receipts.md))
+- [x] Durable reconciliation progress and write-ahead rescue intents ([ADR-0017](docs/adr/0017-durable-reconciliation-progress.md))
 
 **Scaffolding**
 
