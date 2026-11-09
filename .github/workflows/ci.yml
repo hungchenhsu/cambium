@@ -34,6 +34,29 @@ jobs:
       - name: Run tests, including the git path corpus
         run: cargo test --workspace --all-features --locked
 
+  postgres:
+    name: Store suite on Postgres
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        run: rustup show
+      - name: Start a disposable Postgres server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE ROLE cambium LOGIN CREATEDB PASSWORD 'cambium-ci'"
+          psql --version
+      - name: Run the store suite against Postgres
+        env:
+          CAMBIUM_TEST_POSTGRES_URL: postgres://cambium:cambium-ci@127.0.0.1:5432/postgres
+          CAMBIUM_TEST_REQUIRE_POSTGRES: "1"
+        run: cargo test --locked -p cambium-store
+
   licenses:
     name: License policy
     runs-on: ubuntu-24.04

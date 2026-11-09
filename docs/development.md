@@ -227,6 +227,29 @@ persistence, and unknown or modified migrations. A schema test requires every
 tenant table and unique index to start with the tenant boundary. The named
 deployment exceptions are `tenants` and `_sqlx_migrations`.
 
+### Postgres
+
+`PostgresStore` implements the same traits with the same statements (insertion
+order comes from an identity column `seq` instead of `rowid`), under
+[ADR-0020](adr/0020-postgres-store.md) (proposed): one write connection that
+holds a session advisory lock, a read-only pool, and migrations in
+`migrations/postgres` with the same numbers as SQLite. Text columns use the
+`"C"` collation so ordering matches SQLite. The store tests run against
+Postgres when `CAMBIUM_TEST_POSTGRES_URL` names a server where they may create
+databases. Each test gets a fresh database:
+
+```sh
+CAMBIUM_TEST_POSTGRES_URL=postgres://cambium@127.0.0.1:5432/postgres \
+  cargo test --locked -p cambium-store
+```
+
+The CI job "Store suite on Postgres" runs them and sets
+`CAMBIUM_TEST_REQUIRE_POSTGRES=1`, which makes a silent fallback to SQLite fail.
+The server cannot use Postgres yet. The store suite covers authorization,
+idempotency, provenance, schema, and a branch lifecycle and compaction fence
+smoke test; the full lifecycle and compaction paths are exercised only by the
+server's integration tests, which still use SQLite.
+
 `SqliteStore::open` uses a single writer, a separate read pool, WAL, foreign keys,
 FULL synchronization, and a five-second busy timeout. Mutations re-resolve the
 token and all ancestors in the same transaction as the write. The deployment

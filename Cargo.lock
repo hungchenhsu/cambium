@@ -374,6 +374,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "ulid",
 ]
 
 [[package]]
@@ -2654,6 +2655,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sqlx-core",
+ "sqlx-postgres",
  "sqlx-sqlite",
  "syn 2.0.119",
  "tokio",

@@ -1,20 +1,20 @@
 use cambium_protocol::{ErrorCode, IdentityKind, Principal, Scope};
 use cambium_store::{
-    Bootstrap, CreateIdentity, MintToken, SqliteStore, Store, StoreError, TokenHash, TokenSettings,
+    Bootstrap, CreateIdentity, MintToken, Store, StoreError, TokenHash, TokenSettings,
 };
-use tempfile::TempDir;
+use std::sync::Arc;
+
+use cambium_store::compaction::CompactionStore;
+
+mod common;
+use common::TestDatabase;
 
 const NOW: i64 = 1_800_000_000_000;
 
-async fn database() -> (TempDir, SqliteStore) {
-    let directory = tempfile::tempdir().unwrap();
-    let store = SqliteStore::open(
-        directory.path().join("metadata.sqlite"),
-        TokenSettings::default(),
-    )
-    .await
-    .unwrap();
-    (directory, store)
+async fn database() -> (TestDatabase, Arc<dyn CompactionStore>) {
+    let database = TestDatabase::new().await;
+    let store = database.open(TokenSettings::default()).await;
+    (database, store)
 }
 
 async fn bootstrap(store: &dyn Store, slug: &str, hash: u8) -> Principal {
@@ -52,8 +52,8 @@ fn assert_code<T>(result: Result<T, StoreError>, expected: ErrorCode) {
 #[tokio::test]
 async fn tenant_scoped_methods_do_not_read_or_change_another_tenant() {
     let (_directory, store) = database().await;
-    let a = bootstrap(&store, "a", 1).await;
-    let b = bootstrap(&store, "b", 2).await;
+    let a = bootstrap(&*store, "a", 1).await;
+    let b = bootstrap(&*store, "b", 2).await;
     let repo = store
         .reserve_repository(&b, "project", "main", NOW)
         .await
@@ -123,7 +123,7 @@ async fn tenant_scoped_methods_do_not_read_or_change_another_tenant() {
 #[tokio::test]
 async fn delegation_cannot_expand_scope_repositories_or_expiry() {
     let (_directory, store) = database().await;
-    let root = bootstrap(&store, "tenant", 1).await;
+    let root = bootstrap(&*store, "tenant", 1).await;
     let one = store
         .reserve_repository(&root, "one", "main", NOW)
         .await
@@ -199,7 +199,7 @@ async fn delegation_cannot_expand_scope_repositories_or_expiry() {
 #[tokio::test]
 async fn agent_admin_cannot_become_human_or_create_a_system_identity() {
     let (_directory, store) = database().await;
-    let human = bootstrap(&store, "tenant", 1).await;
+    let human = bootstrap(&*store, "tenant", 1).await;
     let agent = store
         .create_identity(
             &human,
@@ -273,7 +273,7 @@ async fn agent_admin_cannot_become_human_or_create_a_system_identity() {
 #[tokio::test]
 async fn ancestor_revocation_invalidates_descendants_and_stale_principals() {
     let (_directory, store) = database().await;
-    let root = bootstrap(&store, "tenant", 1).await;
+    let root = bootstrap(&*store, "tenant", 1).await;
     let child = store.mint_token(&root, &mint(&root, 2), NOW).await.unwrap();
     let grandchild = store
         .mint_token(&child, &mint(&child, 3), NOW)
@@ -314,7 +314,7 @@ async fn ancestor_revocation_invalidates_descendants_and_stale_principals() {
 #[tokio::test]
 async fn disabled_ancestor_identity_invalidates_other_identity_descendants() {
     let (_directory, store) = database().await;
-    let human = bootstrap(&store, "tenant", 1).await;
+    let human = bootstrap(&*store, "tenant", 1).await;
     let agent = store
         .create_identity(
             &human,
@@ -374,18 +374,15 @@ async fn disabled_ancestor_identity_invalidates_other_identity_descendants() {
 
 #[tokio::test]
 async fn kind_lifetime_and_chain_depth_are_checked_before_insertion() {
-    let directory = tempfile::tempdir().unwrap();
-    let store = SqliteStore::open(
-        directory.path().join("metadata.sqlite"),
-        TokenSettings {
+    let directory = TestDatabase::new().await;
+    let store = directory
+        .open(TokenSettings {
             agent_max_lifetime_ms: 1_000,
             max_delegation_depth: 2,
             ..TokenSettings::default()
-        },
-    )
-    .await
-    .unwrap();
-    let root = bootstrap(&store, "tenant", 1).await;
+        })
+        .await;
+    let root = bootstrap(&*store, "tenant", 1).await;
     let agent = store
         .create_identity(
             &root,
@@ -429,8 +426,8 @@ async fn kind_lifetime_and_chain_depth_are_checked_before_insertion() {
 #[tokio::test]
 async fn records_survive_reopen_and_repository_names_are_tenant_scoped() {
     let (directory, store) = database().await;
-    let a = bootstrap(&store, "a", 1).await;
-    let b = bootstrap(&store, "b", 2).await;
+    let a = bootstrap(&*store, "a", 1).await;
+    let b = bootstrap(&*store, "b", 2).await;
     let one = store
         .reserve_repository(&a, "project", "main", NOW)
         .await
@@ -463,12 +460,7 @@ async fn records_survive_reopen_and_repository_names_are_tenant_scoped() {
         .unwrap();
     assert_eq!(unicode.default_branch, "topic/\u{fffd}");
     store.close().await;
-    let store = SqliteStore::open(
-        directory.path().join("metadata.sqlite"),
-        TokenSettings::default(),
-    )
-    .await
-    .unwrap();
+    let store = directory.open(TokenSettings::default()).await;
     assert_eq!(
         store
             .get_repository(&a.tenant_id, &one.id)
@@ -490,7 +482,7 @@ async fn records_survive_reopen_and_repository_names_are_tenant_scoped() {
 #[tokio::test]
 async fn caller_cannot_forge_identity_kind_scope_or_restrictions_on_a_principal() {
     let (_directory, store) = database().await;
-    let root = bootstrap(&store, "tenant", 1).await;
+    let root = bootstrap(&*store, "tenant", 1).await;
     let mut input = mint(&root, 2);
     input.scope = Scope::RepoRead;
     input.repositories = Some(vec![]);
