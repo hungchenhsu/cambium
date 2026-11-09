@@ -514,6 +514,99 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
         1
     );
 
+    // The CLI is a thin client over the same API and MCP tool list (ADR-0019).
+    {
+        async fn cli(base: &str, token: &str, args: &[&str]) -> (i32, String) {
+            let mut stdout = Vec::new();
+            let status = cambium_cli::run(
+                ["cambium-cli", "--url", base, "--json"]
+                    .into_iter()
+                    .chain(args.iter().copied()),
+                cambium_cli::Environment {
+                    token: Some(token.to_owned()),
+                    url: None,
+                },
+                cambium_cli::Io {
+                    stdin: &mut std::io::empty(),
+                    stdout: &mut stdout,
+                    stderr: &mut Vec::new(),
+                },
+            )
+            .await;
+            (status, String::from_utf8(stdout).unwrap())
+        }
+        let input = json!({"repository_id": repo, "path": "README"}).to_string();
+        let (status, stdout) =
+            cli(&api.base, token, &["call", "read_file", "--input", &input]).await;
+        assert_eq!(status, cambium_cli::exit::SUCCESS);
+        assert_eq!(serde_json::from_str::<Value>(&stdout).unwrap(), read);
+        let write = json!({"repository_id": repo, "branch": "cli", "expected": {"kind": "absent"}, "message": "From the CLI\n", "changes": [{"action": "put", "path": "cli.txt", "contents": "cli\n"}]}).to_string();
+        let (status, first_write) = cli(
+            &api.base,
+            token,
+            &[
+                "call",
+                "write_changeset",
+                "--input",
+                &write,
+                "--idempotency-key",
+                "cli-write",
+            ],
+        )
+        .await;
+        assert_eq!(status, cambium_cli::exit::SUCCESS, "{first_write}");
+        let (status, replay) = cli(
+            &api.base,
+            token,
+            &[
+                "call",
+                "write_changeset",
+                "--input",
+                &write,
+                "--idempotency-key",
+                "cli-write",
+            ],
+        )
+        .await;
+        assert_eq!(status, cambium_cli::exit::SUCCESS);
+        assert_eq!(
+            replay, first_write,
+            "an idempotent replay prints the same body"
+        );
+        let mut stdout = Vec::new();
+        let status = cambium_cli::run(
+            [
+                "cambium-cli",
+                "--url",
+                &api.base,
+                "--json",
+                "call",
+                "read_file",
+                "--input",
+                &input,
+            ],
+            cambium_cli::Environment {
+                token: Some(other.to_owned()),
+                url: None,
+            },
+            cambium_cli::Io {
+                stdin: &mut std::io::empty(),
+                stdout: &mut stdout,
+                stderr: &mut Vec::new(),
+            },
+        )
+        .await;
+        assert_eq!(status, cambium_cli::exit::API_ERROR);
+        assert_eq!(
+            serde_json::from_slice::<Value>(&stdout).unwrap()["error"]["code"],
+            "not_found"
+        );
+        let (status, stdout) = cli(&api.base, token, &["operations"]).await;
+        assert_eq!(status, cambium_cli::exit::SUCCESS);
+        let listed = serde_json::from_str::<Value>(&stdout).unwrap();
+        assert_eq!(listed["tools"], tools["result"]["tools"]);
+    }
+
     let reader = api.success(token, "mint_token", json!({"identity_id": principal.actor.identity_id, "scope": "repo:read", "repositories": [repo]})).await;
     let read_token = reader["token"].as_str().unwrap();
     let project_url = format!("{}tenant-a/project.git", server.git);
