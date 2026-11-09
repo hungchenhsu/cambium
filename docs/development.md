@@ -176,6 +176,10 @@ creation/deletion and makes abandoned idempotency reservations retryable.
 The separate [transport test](../crates/cambium-server/tests/transports.rs) starts
 real HTTP/MCP and signed-hook listeners with Enroute, then exercises stock Git
 clone/fetch/push, cross-tenant denial, reserved refs, and token revocation.
+Every operation that names a resource is called with another tenant's token over
+both HTTP and MCP and must return `not_found`; operations without a resource ID
+must stay inside the caller's tenant. The test compares the cases with the MCP
+tool list, so a new operation without a cross-tenant case fails CI.
 An optional official MCP SDK client checks interoperability as described in the
 local setup. The Enroute CI job pins Git 2.50.0 to upstream commit
 `16bd9f20a403117f2e0d9bcda6c6e621d3763e77` and also runs the official MCP SDK
