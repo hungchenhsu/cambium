@@ -1,6 +1,6 @@
 mod common;
 
-use std::{path::Path, process::Command, sync::Arc};
+use std::{collections::BTreeSet, path::Path, process::Command, sync::Arc};
 
 use cambium_backend::{
     Backend as _,
@@ -357,6 +357,10 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
         println!("{}", String::from_utf8_lossy(&output.stdout));
     }
 
+    // Every operation that names another tenant's resource is denied as
+    // not_found over HTTP and MCP; the exhaustiveness check below fails when a
+    // new operation lacks a case.
+    let mut denied_everywhere = BTreeSet::new();
     for (name, arguments) in [
         ("get_repository", json!({"repository_id": repo})),
         ("delete_repository", json!({"repository_id": repo})),
@@ -391,6 +395,7 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
             json!({"repository_id": repo, "from": "HEAD", "to": "HEAD"}),
         ),
     ] {
+        denied_everywhere.insert(name);
         let response = api.operation(other, name, arguments.clone()).await;
         assert_eq!(response.status(), 404);
         assert_eq!(
@@ -450,6 +455,7 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
             json!({"repository_id": repo, "branch_id": branch_id}),
         ),
     ] {
+        denied_everywhere.insert(name);
         assert_eq!(
             api.operation(other, name, arguments.clone()).await.status(),
             404
@@ -466,6 +472,57 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
             "not_found"
         );
     }
+    // Operations that take no resource ID stay inside the caller's tenant.
+    let listed = api.success(other, "list_repositories", json!({})).await;
+    assert_eq!(listed["repositories"], json!([]));
+    let listed = api
+        .rpc(
+            other,
+            "tools/call",
+            json!({"name": "list_repositories", "arguments": {}}),
+        )
+        .await;
+    assert_eq!(
+        listed["result"]["structuredContent"]["repositories"],
+        json!([])
+    );
+    let same_name = api
+        .success(other, "create_repository", json!({"name": "project"}))
+        .await;
+    assert_ne!(same_name["repository_id"], *repo, "names are per tenant");
+    assert_eq!(
+        api.success(other, "list_repositories", json!({})).await["repositories"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    let hidden = api
+        .operation(
+            token,
+            "get_repository",
+            json!({"repository_id": same_name["repository_id"]}),
+        )
+        .await;
+    assert_eq!(
+        hidden.status(),
+        404,
+        "the other tenant's repository is hidden in both directions"
+    );
+    let mut covered = denied_everywhere.clone();
+    covered.extend(["list_repositories", "create_repository"]);
+    let tool_names: BTreeSet<_> = cambium_server::transport::tools()
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(
+        covered
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<BTreeSet<_>>(),
+        tool_names,
+        "every operation needs a cross-tenant case"
+    );
     for (name, arguments) in [
         (
             "get_branch",
@@ -513,6 +570,99 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
             .len(),
         1
     );
+
+    // The CLI is a thin client over the same API and MCP tool list (ADR-0019).
+    {
+        async fn cli(base: &str, token: &str, args: &[&str]) -> (i32, String) {
+            let mut stdout = Vec::new();
+            let status = cambium_cli::run(
+                ["cambium-cli", "--url", base, "--json"]
+                    .into_iter()
+                    .chain(args.iter().copied()),
+                cambium_cli::Environment {
+                    token: Some(token.to_owned()),
+                    url: None,
+                },
+                cambium_cli::Io {
+                    stdin: &mut std::io::empty(),
+                    stdout: &mut stdout,
+                    stderr: &mut Vec::new(),
+                },
+            )
+            .await;
+            (status, String::from_utf8(stdout).unwrap())
+        }
+        let input = json!({"repository_id": repo, "path": "README"}).to_string();
+        let (status, stdout) =
+            cli(&api.base, token, &["call", "read_file", "--input", &input]).await;
+        assert_eq!(status, cambium_cli::exit::SUCCESS);
+        assert_eq!(serde_json::from_str::<Value>(&stdout).unwrap(), read);
+        let write = json!({"repository_id": repo, "branch": "cli", "expected": {"kind": "absent"}, "message": "From the CLI\n", "changes": [{"action": "put", "path": "cli.txt", "contents": "cli\n"}]}).to_string();
+        let (status, first_write) = cli(
+            &api.base,
+            token,
+            &[
+                "call",
+                "write_changeset",
+                "--input",
+                &write,
+                "--idempotency-key",
+                "cli-write",
+            ],
+        )
+        .await;
+        assert_eq!(status, cambium_cli::exit::SUCCESS, "{first_write}");
+        let (status, replay) = cli(
+            &api.base,
+            token,
+            &[
+                "call",
+                "write_changeset",
+                "--input",
+                &write,
+                "--idempotency-key",
+                "cli-write",
+            ],
+        )
+        .await;
+        assert_eq!(status, cambium_cli::exit::SUCCESS);
+        assert_eq!(
+            replay, first_write,
+            "an idempotent replay prints the same body"
+        );
+        let mut stdout = Vec::new();
+        let status = cambium_cli::run(
+            [
+                "cambium-cli",
+                "--url",
+                &api.base,
+                "--json",
+                "call",
+                "read_file",
+                "--input",
+                &input,
+            ],
+            cambium_cli::Environment {
+                token: Some(other.to_owned()),
+                url: None,
+            },
+            cambium_cli::Io {
+                stdin: &mut std::io::empty(),
+                stdout: &mut stdout,
+                stderr: &mut Vec::new(),
+            },
+        )
+        .await;
+        assert_eq!(status, cambium_cli::exit::API_ERROR);
+        assert_eq!(
+            serde_json::from_slice::<Value>(&stdout).unwrap()["error"]["code"],
+            "not_found"
+        );
+        let (status, stdout) = cli(&api.base, token, &["operations"]).await;
+        assert_eq!(status, cambium_cli::exit::SUCCESS);
+        let listed = serde_json::from_str::<Value>(&stdout).unwrap();
+        assert_eq!(listed["tools"], tools["result"]["tools"]);
+    }
 
     let reader = api.success(token, "mint_token", json!({"identity_id": principal.actor.identity_id, "scope": "repo:read", "repositories": [repo]})).await;
     let read_token = reader["token"].as_str().unwrap();

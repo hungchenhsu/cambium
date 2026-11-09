@@ -23,5 +23,6 @@ Each ADR records one decision: its context, the decision itself, and its consequ
 | [0016](0016-multiple-rescue-values.md) | Preserve every conflicting late value | Accepted; amends 0009 |
 | [0017](0017-durable-reconciliation-progress.md) | Persist reconciliation progress before backend mutations | Accepted; amends 0009 and 0013 |
 | [0018](0018-commit-provenance.md) | Provenance on commits written through the API | Accepted |
+| [0019](0019-cli.md) | A thin command-line client | Accepted |
 
 New ADRs use the next number and the sections Status, Date, Context, Decision, and Consequences.
