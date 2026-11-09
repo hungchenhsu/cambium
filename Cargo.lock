@@ -269,6 +269,8 @@ name = "cambium-backend-conformance"
 version = "0.1.0"
 dependencies = [
  "cambium-backend",
+ "cambium-protocol",
+ "sha1",
  "tempfile",
 ]
 

@@ -1,6 +1,7 @@
-//! Shared fixtures for the backend conformance suite (ADR-0007).
+//! Backend conformance suite and its fixtures (ADR-0007).
 //!
-//! Phase 0 supplies the path corpus. Tests against backend implementations
-//! arrive with those implementations; these fixtures alone do not certify one.
+//! [`suite::run`] checks a backend against the contracts in ADR-0007. Adapters
+//! call it from an integration test against a real, pinned backend.
 
 pub mod paths;
+pub mod suite;

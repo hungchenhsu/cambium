@@ -10,6 +10,8 @@ license = "Apache-2.0"
 
 [dependencies]
 cambium-backend.workspace = true
+cambium-protocol.workspace = true
+sha1.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -26,7 +26,7 @@ dependencies change. All crates have `publish = false` during scaffolding.
 | --- | --- | --- |
 | `cambium-protocol` | Apache-2.0 | API types and the error registry (ADR-0012) |
 | `cambium-backend` | Apache-2.0 | Backend and git policy contracts (ADR-0007) |
-| `cambium-backend-conformance` | Apache-2.0 | Shared fixtures and the future backend conformance suite |
+| `cambium-backend-conformance` | Apache-2.0 | Path fixtures and the backend conformance suite (ADR-0007) |
 | `cambium-backend-enroute` | AGPL-3.0-only | Enroute adapter and hook translation (ADR-0006, ADR-0008) |
 | `cambium-store` | AGPL-3.0-only | Tenant-scoped metadata access and all SQL (ADR-0010) |
 | `cambium-server` | AGPL-3.0-only | Shared operations, HTTP/MCP, signed Git policy, and host administration |
@@ -113,6 +113,38 @@ could erase the very cases under test. No developer repository is modified.
 These are reusable input fixtures and a stock-git round trip, not evidence of
 Enroute conformance, Cambium path parsing, or backend migration correctness.
 Those checks belong to the implementations described in ADR-0007.
+
+## Backend conformance suite
+
+[`suite.rs`](../crates/cambium-backend-conformance/src/suite.rs) checks any
+`Backend` against ADR-0007's contracts. It takes a backend and a `Namespace`
+that allocates fresh repository IDs under a prefix no one else uses:
+
+1. lifecycle, including prefix listing and recreating a deleted ID empty;
+2. refs: each expectation and rejection reason, in request order;
+3. commits: modes, nested directories, deletes that empty a directory, CAS, and
+   root commits;
+4. raw reads, where every object hashes to its ID;
+5. the path corpus written with `create_commit`, or `unsupported_path` for
+   non-UTF-8 paths when the backend lacks `non_utf8_paths`;
+6. copies;
+7. when the capability is reported, sealing (ADR-0013) and ref creation receipts
+   (ADR-0015).
+
+Two parts of ADR-0007's list need a git endpoint and policy wiring, so each
+adapter covers them in its own tests: the stock-git half of exact paths
+(`backend.rs`) and the git edge (`hooks.rs`, plus the server's transport tests).
+
+```sh
+ENROUTE_BIN="$PWD/target/enroute/target/debug/enroute" \
+  cargo test --locked -p cambium-backend-enroute --test conformance -- --ignored
+```
+
+The same file wraps Enroute in deliberately broken adapters to prove the suite
+detects each of the following: corrupted reads, reordered ref outcomes, an
+unknown ancestor reported as an error, a copy that ignores the non-fast-forward
+flag, a delete that keeps the repository, and a seal that does nothing. The
+patch workflow runs both tests in CI against the pinned backend.
 
 ## Pinned Enroute patch
 
