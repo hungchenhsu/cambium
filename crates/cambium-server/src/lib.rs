@@ -3,6 +3,7 @@
 pub mod deployment;
 pub mod git_policy;
 pub mod objects;
+pub mod openapi;
 pub mod requests;
 pub mod secrets;
 pub mod service;

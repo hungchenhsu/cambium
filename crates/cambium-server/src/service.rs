@@ -10,7 +10,8 @@ use cambium_backend::{
     Backend, BackendError, BackendRepositoryId, CommitRequest, FileChange, FileMode, GitIdentity,
 };
 use cambium_protocol::{
-    ApiError, ErrorCode, ObjectId, Principal, RepositoryId, RequestId, Scope, TenantId,
+    ApiError, ErrorCode, ObjectId, Principal, RepositoryId, RequestId, Scope, TenantId, Warning,
+    WarningCode,
     bytes::{decode_pair, encode_pair},
 };
 use cambium_store::{
@@ -1211,7 +1212,9 @@ fn add_collision_warnings(value: &mut Value, entries: &[TreeEntry]) {
                     .collect()
             })
             .collect();
-        value["warnings"] = json!([{"code": "path_collision", "message": "Some paths collide under case folding or Unicode normalization", "details": {"groups": paths}}]);
+        let mut details = serde_json::Map::new();
+        details.insert("groups".into(), json!(paths));
+        value["warnings"] = json!([Warning::new(WarningCode::PathCollision, details)]);
     }
 }
 pub fn store_error(error: StoreError) -> ApiError {

@@ -83,7 +83,7 @@ The smallest Cambium that shows the agent layer working over Enroute.
 
 - [ ] Postgres metadata store
 - [ ] Object storage configuration guide for Enroute (S3-compatible)
-- [ ] Full error code registry, published as part of the API contract
+- [x] Full error code registry, published as part of the API contract ([registry](docs/api/errors.md), [OpenAPI description](docs/api/openapi.json))
 - [ ] Provenance fields on changes (agent, model, session ID)
 - [ ] CLI as a thin client over the API, with `--json` output and a message catalog for human output (`en`)
 - [ ] Cross-tenant isolation tests extended to every endpoint, run in CI
