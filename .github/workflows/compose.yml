@@ -10,6 +10,7 @@ on:
       - examples/agent-loop.py
       - examples/requirements.txt
       - scripts/verify_compose.py
+      - scripts/compose_backup.py
       - scripts/prepare_enroute.py
       - vendor/enroute/**
       - crates/**
@@ -27,6 +28,7 @@ on:
       - examples/agent-loop.py
       - examples/requirements.txt
       - scripts/verify_compose.py
+      - scripts/compose_backup.py
       - scripts/prepare_enroute.py
       - vendor/enroute/**
       - crates/**
@@ -75,6 +77,24 @@ jobs:
       - name: Restart with retained volumes and repeat the checks
         run: |
           docker compose restart cambium enroute
+          docker compose up -d --wait
+          python3 scripts/verify_compose.py --credential-file .cambium-bootstrap.json --result-file "$RUNNER_TEMP/cambium-demo-result.json"
+      - name: Kill both services and repeat the checks
+        run: |
+          docker compose kill --signal SIGKILL cambium enroute
+          docker compose up -d --wait
+          python3 scripts/verify_compose.py --credential-file .cambium-bootstrap.json --result-file "$RUNNER_TEMP/cambium-demo-result.json"
+      - name: Back up, restore into fresh volumes, and repeat the checks
+        run: |
+          python3 scripts/compose_backup.py backup "$RUNNER_TEMP/cambium-backup"
+          docker compose down --volumes
+          python3 scripts/compose_backup.py restore "$RUNNER_TEMP/cambium-backup"
+          python3 scripts/verify_compose.py --credential-file .cambium-bootstrap.json --result-file "$RUNNER_TEMP/cambium-demo-result.json"
+          # A restore never writes into existing state.
+          if python3 scripts/compose_backup.py restore "$RUNNER_TEMP/cambium-backup"; then
+            echo "restore over a live deployment was not refused" >&2
+            exit 1
+          fi
           docker compose up -d --wait
           python3 scripts/verify_compose.py --credential-file .cambium-bootstrap.json --result-file "$RUNNER_TEMP/cambium-demo-result.json"
       - name: Show service logs on failure

@@ -110,6 +110,7 @@ docker compose up -d --wait
 ```
 
 `down` keeps all data volumes. Startup recovers interrupted lifecycle operations.
+To keep a copy first, follow [backup and restore](backup.md).
 To deliberately erase this disposable deployment, `docker compose down --volumes`
 removes its database, keys, and every repository. Do not use that command on data
 you intend to retain.
