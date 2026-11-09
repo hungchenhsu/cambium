@@ -285,6 +285,135 @@ async fn shared_operations_preserve_authorization_bytes_and_idempotent_effects()
         success(call(&app, token, "write_changeset", write.clone()).await),
         first
     );
+    // Provenance: the writer is attested, claims are optional and validated (ADR-0018).
+    assert_eq!(first["provenance_recorded"], true);
+    let attested = success(
+        call(
+            &app,
+            token,
+            "get_commit_provenance",
+            json!({"repository_id": repo, "commit_id": first["commit_id"]}),
+        )
+        .await,
+    );
+    assert_eq!(attested["commit_id"], first["commit_id"]);
+    assert_eq!(
+        attested["recorded_by"],
+        json!({"identity_id": principal.actor.identity_id, "kind": "human"})
+    );
+    assert_eq!(attested["claims"], json!({}));
+    assert!(attested["recorded_at"].as_str().unwrap().ends_with('Z'));
+    error(
+        call(
+            &app,
+            other,
+            "get_commit_provenance",
+            json!({"repository_id": repo, "commit_id": first["commit_id"]}),
+        )
+        .await,
+        "not_found",
+    );
+    for provenance in [
+        json!({"model": ""}),
+        json!({"session_id": "x".repeat(256)}),
+        json!({"model": "tab\there"}),
+        json!({"agent": "forged"}),
+    ] {
+        error(
+            call(
+                &app,
+                token,
+                "write_changeset",
+                json!({"repository_id": repo, "message": "x", "changes": [{"action": "put", "path": "p", "contents": "p"}], "provenance": provenance}),
+            )
+            .await,
+            "invalid_request",
+        );
+    }
+    let claimed = success(
+        call(
+            &app,
+            token,
+            "write_changeset",
+            json!({"repository_id": repo, "branch": "claims", "expected": {"kind": "absent"}, "message": "Claimed\n", "changes": [{"action": "put", "path": "claimed.txt", "contents": "x"}], "provenance": {"model": "example-model-1", "session_id": "run-42"}}),
+        )
+        .await,
+    );
+    assert_eq!(claimed["provenance_recorded"], true);
+    let claims = success(
+        call(
+            &app,
+            token,
+            "get_commit_provenance",
+            json!({"repository_id": repo, "commit_id": claimed["commit_id"]}),
+        )
+        .await,
+    );
+    assert_eq!(
+        claims["claims"],
+        json!({"model": "example-model-1", "session_id": "run-42"})
+    );
+    error(
+        call(
+            &app,
+            token,
+            "get_commit_provenance",
+            json!({"repository_id": repo, "commit_id": "0".repeat(40)}),
+        )
+        .await,
+        "not_found",
+    );
+    // A failed provenance write never turns the applied commit into an error.
+    {
+        use sqlx::Connection as _;
+        let mut connection =
+            sqlx::SqliteConnection::connect(&format!("sqlite://{}", path.display()))
+                .await
+                .unwrap();
+        sqlx::query("CREATE TRIGGER fail_provenance BEFORE INSERT ON commit_provenance BEGIN SELECT RAISE(ABORT, 'injected'); END")
+            .execute(&mut connection)
+            .await
+            .unwrap();
+        let unrecorded = success(
+            call(
+                &app,
+                token,
+                "write_changeset",
+                json!({"repository_id": repo, "branch": "claims", "message": "Unrecorded\n", "changes": [{"action": "put", "path": "unrecorded.txt", "contents": "y"}], "provenance": {"model": "example-model-1"}, "idempotency_key": "unrecorded"}),
+            )
+            .await,
+        );
+        assert_eq!(unrecorded["provenance_recorded"], false);
+        assert_eq!(unrecorded["parent_commit_id"], claimed["commit_id"]);
+        sqlx::query("DROP TRIGGER fail_provenance")
+            .execute(&mut connection)
+            .await
+            .unwrap();
+        connection.close().await.unwrap();
+        error(
+            call(
+                &app,
+                token,
+                "get_commit_provenance",
+                json!({"repository_id": repo, "commit_id": unrecorded["commit_id"]}),
+            )
+            .await,
+            "not_found",
+        );
+        // The replay reports the original outcome; it does not retry the record.
+        assert_eq!(
+            success(
+                call(
+                    &app,
+                    token,
+                    "write_changeset",
+                    json!({"repository_id": repo, "branch": "claims", "message": "Unrecorded\n", "changes": [{"action": "put", "path": "unrecorded.txt", "contents": "y"}], "provenance": {"model": "example-model-1"}, "idempotency_key": "unrecorded"}),
+                )
+                .await
+            ),
+            unrecorded
+        );
+    }
     let file = success(
         call(
             &app,

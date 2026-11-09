@@ -17,7 +17,7 @@ use cambium_protocol::{
 use cambium_store::{
     IdentityRecord, RepositoryRecord, StoreError, TokenHash,
     compaction::CompactionStore,
-    operations::{Claim, Completion, OperationKey},
+    operations::{Claim, Completion, OperationKey, ProvenanceClaims, ProvenanceRecord},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -634,6 +634,17 @@ impl App {
                 add_bytes(&mut result, "contents", &contents, input.always_base64);
                 Ok(result)
             }
+            Operation::GetCommitProvenance(input) => {
+                let repository = self
+                    .readable_repository(&principal, &input.repository_id)
+                    .await?;
+                let record = self
+                    .store
+                    .get_commit_provenance(&principal.tenant_id, &repository.id, &input.commit_id)
+                    .await
+                    .map_err(store_error)?;
+                provenance_json(&record)
+            }
             Operation::ListTree(input) => self.list_tree(&principal, input).await,
             Operation::Diff(input) => self.diff(&principal, input).await,
             Operation::CreateIdentity(input) => {
@@ -798,6 +809,7 @@ impl App {
         }
         let backend_id = backend_id(&repository)?;
         let branch = validate_branch(&input.branch)?;
+        let claims = provenance_claims(input.provenance.as_ref())?;
         self.check_branch_available(&repository, &branch).await?;
         let request: CommitRequest = if let Some(saved) = &reservation.saved {
             serde_json::from_value(saved["commit"].clone()).map_err(|_| internal())?
@@ -888,7 +900,19 @@ impl App {
             backend: self.backend.as_ref(),
             repository: &backend_id,
         };
-        let mut response = json!({"commit_id": result.commit_id, "tree_id": result.tree_id});
+        // Provenance is recorded after the commit lands and cannot undo it (ADR-0018).
+        let recorded = self
+            .store
+            .record_commit_provenance(
+                principal,
+                &repository.id,
+                &result.commit_id,
+                &claims,
+                self.clock.now_ms(),
+            )
+            .await
+            .unwrap_or(false);
+        let mut response = json!({"commit_id": result.commit_id, "tree_id": result.tree_id, "provenance_recorded": recorded});
         if let Some(parent) = result.parent_commit_id {
             response["parent_commit_id"] = json!(parent);
         }
@@ -1165,6 +1189,40 @@ fn token_request(
         repositories: input.repositories.clone(),
         expires_at_ms,
     })
+}
+fn provenance_claims(input: Option<&requests::Provenance>) -> Result<ProvenanceClaims, ApiError> {
+    let check = |field: &str, value: &Option<String>| match value {
+        Some(value)
+            if value.is_empty()
+                || value.len() > 255
+                || !value.bytes().all(|b| (b' '..=b'~').contains(&b)) =>
+        {
+            Err(ApiError::invalid(
+                field,
+                "Expected 1 to 255 printable ASCII characters",
+            ))
+        }
+        _ => Ok(value.clone()),
+    };
+    let Some(input) = input else {
+        return Ok(ProvenanceClaims::default());
+    };
+    Ok(ProvenanceClaims {
+        model: check("provenance.model", &input.model)?,
+        session_id: check("provenance.session_id", &input.session_id)?,
+    })
+}
+fn provenance_json(record: &ProvenanceRecord) -> Result<Value, ApiError> {
+    let mut claims = json!({});
+    if let Some(model) = &record.claims.model {
+        claims["model"] = json!(model);
+    }
+    if let Some(session) = &record.claims.session_id {
+        claims["session_id"] = json!(session);
+    }
+    Ok(
+        json!({"commit_id": record.commit_id, "recorded_at": timestamp(record.recorded_at_ms)?, "recorded_by": record.recorded_by, "claims": claims}),
+    )
 }
 fn identity_json(record: &IdentityRecord) -> Result<Value, ApiError> {
     let mut result = json!({"identity_id": record.id, "kind": record.kind, "name": record.name, "created_at": timestamp(record.created_at_ms)?, "created_by": record.created_by});

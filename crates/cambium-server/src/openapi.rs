@@ -241,7 +241,9 @@ fn tag(name: &str) -> &'static str {
         | "list_branches"
         | "extend_branch"
         | "promote_branch" => "branches",
-        "write_changeset" | "read_file" | "list_tree" | "diff" => "content",
+        "write_changeset" | "read_file" | "list_tree" | "diff" | "get_commit_provenance" => {
+            "content"
+        }
         _ => "repositories",
     }
 }

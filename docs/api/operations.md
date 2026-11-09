@@ -25,8 +25,9 @@ prefix. List limits default to 100 and cannot exceed 1000.
 | `get_repository` | `repository_id` | repo:read |
 | `list_repositories` | `limit?`, `page_token?` | repo:read |
 | `delete_repository` | `repository_id` | repo:admin |
-| `write_changeset` | `repository_id`, `message`, `changes`, `branch?` (main), `expected?`, `author?`, `committer?` | repo:write |
+| `write_changeset` | `repository_id`, `message`, `changes`, `branch?` (main), `expected?`, `author?`, `committer?`, `provenance?` | repo:write |
 | `read_file` | `repository_id`, `path` or `path_b64`, `revision?` (HEAD), `always_base64?` (false) | repo:read |
+| `get_commit_provenance` | `repository_id`, `commit_id` | repo:read |
 | `list_tree` | `repository_id`, `revision?` (HEAD), `recursive?` (true), `limit?`, `page_token?` | repo:read |
 | `diff` | `repository_id`, `from`, `to`, `limit?`, `page_token?` | repo:read |
 | `create_ephemeral_branch` | `repository_id`, `name`, `start_commit`, `ttl_seconds?` (3600) | repo:write |
@@ -71,6 +72,22 @@ the same write a second time. A completed response replays the original IDs.
 An explicit author or committer contains `name`, `email`, and RFC 3339 `time`.
 Successful writes return commit/tree IDs and `path_collision_check_complete`.
 False means warning scanning was incomplete; it does not invalidate the commit.
+
+## Provenance
+
+`provenance` is an optional object with `model` and `session_id`, each 1 to 255
+printable ASCII characters. Cambium records them with the writing identity, which
+comes from the token and cannot be set by the client ([ADR-0018](../adr/0018-commit-provenance.md)).
+Successful writes return `provenance_recorded`: true when this request's
+record was stored. False means nothing was stored for this request, and the
+commit stands: either recording failed after the commit landed, or an identical
+commit already had a record, which is kept.
+
+`get_commit_provenance` returns `commit_id`, `recorded_at`, `recorded_by`
+(`identity_id` and `kind`), and `claims` with whichever of `model` and
+`session_id` the writer sent. Claims are unverified. It returns `not_found` for
+commits pushed with git, commits whose record failed, and commits written
+before provenance existed. The first record for a commit ID is kept.
 
 Reads accept a full object ID, `HEAD`, a full ref, or a short branch name.
 `read_file` returns exact contents in `contents` or `contents_b64`. Tree and diff

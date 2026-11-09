@@ -1089,6 +1089,29 @@
         ],
         "type": "object"
       },
+      "GetCommitProvenanceInput": {
+        "additionalProperties": false,
+        "properties": {
+          "commit_id": {
+            "$ref": "#/components/schemas/ObjectId"
+          },
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          }
+        },
+        "required": [
+          "repository_id",
+          "commit_id"
+        ],
+        "type": "object"
+      },
       "GetIdentityInput": {
         "additionalProperties": false,
         "properties": {
@@ -1364,6 +1387,27 @@
         ],
         "type": "object"
       },
+      "Provenance": {
+        "additionalProperties": false,
+        "description": "Unverified claims about how a change was produced (ADR-0018).",
+        "properties": {
+          "model": {
+            "description": "The model that produced the change, such as a model ID. Printable ASCII, 1 to 255 characters.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_id": {
+            "description": "The client's session or run identifier. Printable ASCII, 1 to 255 characters.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "PublicIdentityKind": {
         "description": "System actors are internal and cannot be created through an operation.",
         "enum": [
@@ -1579,6 +1623,16 @@
           },
           "message": {
             "type": "string"
+          },
+          "provenance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Provenance"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "repository_id": {
             "$ref": "#/components/schemas/RepositoryId"
@@ -2186,6 +2240,75 @@
         "summary": "Read a branch lifecycle record.",
         "tags": [
           "branches"
+        ]
+      }
+    },
+    "/v1/operations/get_commit_provenance": {
+      "post": {
+        "operationId": "get_commit_provenance",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetCommitProvenanceInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "Read who wrote a commit through the API, and the model and session it claimed.",
+        "tags": [
+          "content"
         ]
       }
     },

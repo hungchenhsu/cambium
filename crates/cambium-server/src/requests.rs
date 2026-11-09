@@ -36,8 +36,9 @@ pub enum Operation {
     ListBranches(ListBranches),
     ExtendBranch(ExtendBranch),
     PromoteBranch(Branch),
-    WriteChangeset(WriteChangeset),
+    WriteChangeset(Box<WriteChangeset>),
     ReadFile(ReadFile),
+    GetCommitProvenance(CommitProvenance),
     ListTree(ListTree),
     Diff(Diff),
     CreateIdentity(CreateIdentity),
@@ -60,6 +61,7 @@ impl Operation {
             Self::ExtendBranch(v) => Some(&v.repository_id),
             Self::WriteChangeset(v) => Some(&v.repository_id),
             Self::ReadFile(v) => Some(&v.repository_id),
+            Self::GetCommitProvenance(v) => Some(&v.repository_id),
             Self::ListTree(v) => Some(&v.repository_id),
             Self::Diff(v) => Some(&v.repository_id),
             _ => None,
@@ -87,6 +89,7 @@ impl Operation {
             Self::GetRepository(_)
                 | Self::ListRepositories(_)
                 | Self::ReadFile(_)
+                | Self::GetCommitProvenance(_)
                 | Self::ListTree(_)
                 | Self::Diff(_)
                 | Self::GetIdentity(_)
@@ -142,6 +145,24 @@ pub struct WriteChangeset {
     pub author: Option<GitIdentity>,
     pub committer: Option<GitIdentity>,
     pub changes: Vec<FileChange>,
+    pub provenance: Option<Provenance>,
+}
+
+/// Unverified claims about how a change was produced (ADR-0018).
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Provenance {
+    /// The model that produced the change, such as a model ID. Printable ASCII, 1 to 255 characters.
+    pub model: Option<String>,
+    /// The client's session or run identifier. Printable ASCII, 1 to 255 characters.
+    pub session_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CommitProvenance {
+    pub repository_id: RepositoryId,
+    pub commit_id: ObjectId,
 }
 
 #[derive(Clone, Debug, Deserialize, schemars::JsonSchema)]
