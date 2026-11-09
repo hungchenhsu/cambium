@@ -816,6 +816,14 @@ pub async fn sealing(backend: &dyn Backend, ids: &Namespace) {
         )
         .await
         .expect("a root commit succeeds");
+    // The copy source must hold the ref, so a refused copy can only mean the seal.
+    backend
+        .create_commit(
+            &other,
+            &commit_request(MAIN, None, vec![put(b"o", b"o", FileMode::Regular)]),
+        )
+        .await
+        .expect("a root commit in the copy source succeeds");
     backend
         .seal_repository(&sealed)
         .await
@@ -865,9 +873,10 @@ pub async fn sealing(backend: &dyn Backend, ids: &Namespace) {
         )
         .await;
     assert!(
-        copy_in.is_err(),
-        "a copy into a sealed repository is refused"
+        matches!(copy_in, Err(BackendError::RepositorySealed)),
+        "a copy into a sealed repository is refused by the seal: {copy_in:?}"
     );
+    assert_eq!(tip(backend, &sealed, "refs/heads/in").await, None);
     assert_eq!(
         tip(backend, &sealed, MAIN).await,
         Some(first.commit_id.clone()),
