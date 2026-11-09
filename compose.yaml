@@ -49,6 +49,8 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     networks: [private]
+    # The server shuts down on SIGINT; Docker's default SIGTERM would wait for SIGKILL.
+    stop_signal: SIGINT
     volumes:
       - metadata:/var/lib/cambium
     tmpfs: [/tmp]

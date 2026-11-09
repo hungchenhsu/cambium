@@ -29,6 +29,7 @@ class ComposeInitializationTests(unittest.TestCase):
         for name, value in (
             ("DATA", self.data), ("SHARED_KEY", self.shared),
             ("CONFIG", self.config),
+            ("RESTORE_INCOMPLETE", root / ".restore-incomplete"),
         ):
             current = patch.object(INITIALIZE, name, value)
             current.start()
@@ -44,6 +45,14 @@ class ComposeInitializationTests(unittest.TestCase):
         for name in INITIALIZE.REQUIRED:
             (state / name).write_bytes(f"original {name}".encode())
         return subprocess.CompletedProcess(command, 0)
+
+    def test_an_unfinished_restore_is_never_started_or_initialized(self) -> None:
+        (Path(self.directory.name) / ".restore-incomplete").touch()
+        with patch.object(INITIALIZE.subprocess, "run") as run:
+            with self.assertRaises(SystemExit):
+                INITIALIZE.main()
+        run.assert_not_called()
+        self.assertFalse(self.data.exists())
 
     def test_empty_directory_and_interrupted_stage_can_retry(self) -> None:
         self.data.mkdir()

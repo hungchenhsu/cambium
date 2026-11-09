@@ -89,7 +89,7 @@ The smallest Cambium that shows the agent layer working over Enroute.
 - [x] Cross-tenant isolation tests extended to every endpoint, run in CI ([transport test](crates/cambium-server/tests/transports.rs), [compose verification](scripts/verify_compose.py))
 - [x] Backend conformance test suite, run in CI ([suite](docs/development.md#backend-conformance-suite))
 - [ ] Tested procedure for moving repositories to another backend
-- [ ] Crash-recovery and durability tests, and a documented backup and restore procedure
+- [x] Crash-recovery and durability tests, and a documented backup and restore procedure ([backup and restore](docs/backup.md))
 - [ ] Self-host packaging: release binaries and container images
 - [ ] Published benchmarks against Enroute alone, walgit, and a stock git server (ephemeral branch creation, write latency, clone time)
 

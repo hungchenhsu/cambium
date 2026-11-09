@@ -128,6 +128,13 @@ def main(args: argparse.Namespace) -> None:
         api + "/v1/operations/get_repository", credential["token"], query,
     )
     assert status == 200
+    # The agent loop's commit and its tree are still readable, not just the record.
+    status, tree = request(
+        api + "/v1/operations/list_tree", credential["token"],
+        {**query, "revision": result["commit_id"]},
+    )
+    assert status == 200 and tree["revision"] == result["commit_id"], tree
+    assert tree["entries"], tree
 
     # The example never gives these container paths or credentials to an agent.
     prefix = (

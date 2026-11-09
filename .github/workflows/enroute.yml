@@ -102,5 +102,9 @@ jobs:
         env:
           ENROUTE_BIN: ${{ github.workspace }}/target/enroute/target/debug/enroute
         run: cargo test --locked -p cambium-server --test lifecycle -- --ignored
+      - name: Test crash recovery and a cold copy of both state directories
+        env:
+          ENROUTE_BIN: ${{ github.workspace }}/target/enroute/target/debug/enroute
+        run: cargo test --locked -p cambium-server --test durability -- --ignored
       - name: Verify source remained pinned
         run: python3 scripts/prepare_enroute.py --verify
