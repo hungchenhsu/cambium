@@ -523,6 +523,12 @@ pub fn tools() -> Vec<Value> {
             true,
             false,
         ),
+        tool::<requests::CommitProvenance>(
+            "get_commit_provenance",
+            "Read who wrote a commit through the API, and the model and session it claimed.",
+            true,
+            false,
+        ),
         tool::<requests::ListTree>(
             "list_tree",
             "List byte-preserving tree entries with pagination.",

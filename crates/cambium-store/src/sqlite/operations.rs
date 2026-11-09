@@ -1,5 +1,8 @@
 use super::*;
-use crate::operations::{Claim, Completion, OperationKey, OperationsStore};
+use crate::operations::{
+    Claim, Completion, OperationKey, OperationsStore, ProvenanceClaims, ProvenanceRecord,
+};
+use cambium_protocol::ObjectId;
 use cambium_protocol::RequestId;
 use serde_json::Value;
 
@@ -7,6 +10,63 @@ const RETENTION_MS: i64 = 24 * 60 * 60 * 1000;
 
 #[async_trait]
 impl OperationsStore for SqliteStore {
+    async fn record_commit_provenance(
+        &self,
+        principal: &Principal,
+        repository: &RepositoryId,
+        commit: &ObjectId,
+        claims: &ProvenanceClaims,
+        now_ms: i64,
+    ) -> StoreResult<bool> {
+        let mut tx = self.writer.begin().await?;
+        let (principal, _) = self
+            .resolve(&mut tx, &principal.tenant_id, &principal.token_id, now_ms)
+            .await?;
+        principal.require_repository(repository, Scope::RepoWrite)?;
+        // The repository must still be live in this tenant.
+        sqlx::query(
+            "SELECT 1 FROM repositories WHERE tenant_id = ? AND id = ? AND state = 'ready'",
+        )
+        .bind(principal.tenant_id.as_str())
+        .bind(repository.as_str())
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| request(ErrorCode::NotFound))?;
+        // The first record for a commit ID wins.
+        let inserted = sqlx::query("INSERT INTO commit_provenance (tenant_id, repository_id, commit_id, model, session_id, created_at_ms, created_by, created_by_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (tenant_id, repository_id, commit_id) DO NOTHING")
+            .bind(principal.tenant_id.as_str()).bind(repository.as_str()).bind(commit.as_str())
+            .bind(claims.model.as_deref()).bind(claims.session_id.as_deref()).bind(now_ms)
+            .bind(principal.actor.identity_id.as_str()).bind(kind_name(principal.actor.kind))
+            .execute(&mut *tx).await?
+            .rows_affected();
+        tx.commit().await?;
+        Ok(inserted == 1)
+    }
+
+    async fn get_commit_provenance(
+        &self,
+        tenant: &TenantId,
+        repository: &RepositoryId,
+        commit: &ObjectId,
+    ) -> StoreResult<ProvenanceRecord> {
+        let row = sqlx::query("SELECT * FROM commit_provenance WHERE tenant_id = ? AND repository_id = ? AND commit_id = ?")
+            .bind(tenant.as_str())
+            .bind(repository.as_str())
+            .bind(commit.as_str())
+            .fetch_optional(&self.readers)
+            .await?
+            .ok_or_else(|| request(ErrorCode::NotFound))?;
+        Ok(ProvenanceRecord {
+            commit_id: parse(row.try_get("commit_id")?)?,
+            claims: ProvenanceClaims {
+                model: row.try_get("model")?,
+                session_id: row.try_get("session_id")?,
+            },
+            recorded_at_ms: row.try_get("created_at_ms")?,
+            recorded_by: actor(&row)?,
+        })
+    }
+
     async fn record_branch_activity(
         &self,
         principal: &Principal,
@@ -198,6 +258,8 @@ impl OperationsStore for SqliteStore {
             .bind(now_ms).bind(now_ms).bind(tenant.as_str()).bind(repository.as_str()).execute(&mut *tx).await?;
         sqlx::query("UPDATE expiries SET reclaimed_at_ms = ?, updated_at_ms = ?, updated_by = 'idn_00000000000000000000000000', updated_by_kind = 'system' WHERE tenant_id = ? AND repository_id = ? AND reclaimed_at_ms IS NULL")
             .bind(now_ms).bind(now_ms).bind(tenant.as_str()).bind(repository.as_str()).execute(&mut *tx).await?;
+        sqlx::query("DELETE FROM commit_provenance WHERE tenant_id = ? AND repository_id = ? AND EXISTS(SELECT 1 FROM repositories WHERE tenant_id = ? AND id = ? AND state = 'deleting')")
+            .bind(tenant.as_str()).bind(repository.as_str()).bind(tenant.as_str()).bind(repository.as_str()).execute(&mut *tx).await?;
         sqlx::query("UPDATE repositories SET state = 'deleted', updated_at_ms = ? WHERE tenant_id = ? AND id = ? AND state = 'deleting'")
             .bind(now_ms).bind(tenant.as_str()).bind(repository.as_str()).execute(&mut *tx).await?;
         tx.commit().await?;

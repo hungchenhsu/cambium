@@ -317,7 +317,7 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
     let initialized = api.rpc(token, "initialize", json!({"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "test", "version": "1"}})).await;
     assert_eq!(initialized["result"]["protocolVersion"], "2025-11-25");
     let tools = api.rpc(token, "tools/list", json!({})).await;
-    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 20);
+    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 21);
     for tool in tools["result"]["tools"].as_array().unwrap() {
         assert_eq!(tool["inputSchema"]["additionalProperties"], false);
         assert_eq!(
@@ -437,6 +437,10 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
         ("list_branches", json!({"repository_id": repo})),
         ("request_compaction", json!({"repository_id": repo})),
         ("get_reclamation", json!({"repository_id": repo})),
+        (
+            "get_commit_provenance",
+            json!({"repository_id": repo, "commit_id": first}),
+        ),
         (
             "extend_branch",
             json!({"repository_id": repo, "branch_id": branch_id, "ttl_seconds": 120}),

@@ -1,7 +1,9 @@
 //! Durable work reservations. Response payloads are opaque encrypted envelopes.
 
 use async_trait::async_trait;
-use cambium_protocol::{IdentityId, Principal, RepositoryId, RequestId, TenantId, TokenId};
+use cambium_protocol::{
+    Actor, IdentityId, ObjectId, Principal, RepositoryId, RequestId, TenantId, TokenId,
+};
 use serde_json::Value;
 
 use crate::{MintToken, RepositoryRecord, Store, StoreResult};
@@ -30,8 +32,39 @@ pub struct Completion {
     pub encrypted_response: String,
 }
 
+/// Claims made by the writer of a commit. Cambium does not verify them (ADR-0018).
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ProvenanceClaims {
+    pub model: Option<String>,
+    pub session_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProvenanceRecord {
+    pub commit_id: ObjectId,
+    pub claims: ProvenanceClaims,
+    pub recorded_at_ms: i64,
+    pub recorded_by: Actor,
+}
+
 #[async_trait]
 pub trait OperationsStore: Store {
+    /// Re-authorizes `repo:write`. Returns false, and keeps the existing record,
+    /// when the commit already has one.
+    async fn record_commit_provenance(
+        &self,
+        principal: &Principal,
+        repository: &RepositoryId,
+        commit: &ObjectId,
+        claims: &ProvenanceClaims,
+        now_ms: i64,
+    ) -> StoreResult<bool>;
+    async fn get_commit_provenance(
+        &self,
+        tenant: &TenantId,
+        repository: &RepositoryId,
+        commit: &ObjectId,
+    ) -> StoreResult<ProvenanceRecord>;
     async fn record_branch_activity(
         &self,
         principal: &Principal,
