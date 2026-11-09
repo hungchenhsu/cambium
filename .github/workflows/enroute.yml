@@ -85,6 +85,10 @@ jobs:
         env:
           ENROUTE_BIN: ${{ github.workspace }}/target/enroute/target/debug/enroute
         run: cargo test --locked -p cambium-backend-enroute --test backend -- --ignored
+      - name: Run the backend conformance suite
+        env:
+          ENROUTE_BIN: ${{ github.workspace }}/target/enroute/target/debug/enroute
+        run: cargo test --locked -p cambium-backend-enroute --test conformance -- --ignored
       - name: Test shared operations and retry boundaries
         env:
           ENROUTE_BIN: ${{ github.workspace }}/target/enroute/target/debug/enroute
