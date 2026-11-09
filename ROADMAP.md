@@ -86,7 +86,7 @@ The smallest Cambium that shows the agent layer working over Enroute.
 - [x] Full error code registry, published as part of the API contract ([registry](docs/api/errors.md), [OpenAPI description](docs/api/openapi.json))
 - [x] Provenance fields on changes (agent, model, session ID) ([ADR-0018](docs/adr/0018-commit-provenance.md))
 - [x] CLI as a thin client over the API, with `--json` output and a message catalog for human output (`en`) ([CLI](docs/cli.md), [ADR-0019](docs/adr/0019-cli.md))
-- [ ] Cross-tenant isolation tests extended to every endpoint, run in CI
+- [x] Cross-tenant isolation tests extended to every endpoint, run in CI ([transport test](crates/cambium-server/tests/transports.rs), [compose verification](scripts/verify_compose.py))
 - [x] Backend conformance test suite, run in CI ([suite](docs/development.md#backend-conformance-suite))
 - [ ] Tested procedure for moving repositories to another backend
 - [ ] Crash-recovery and durability tests, and a documented backup and restore procedure
