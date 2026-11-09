@@ -30,6 +30,7 @@ dependencies change. All crates have `publish = false` during scaffolding.
 | `cambium-backend-enroute` | AGPL-3.0-only | Enroute adapter and hook translation (ADR-0006, ADR-0008) |
 | `cambium-store` | AGPL-3.0-only | Tenant-scoped metadata access and all SQL (ADR-0010) |
 | `cambium-server` | AGPL-3.0-only | Shared operations, HTTP/MCP, signed Git policy, and host administration |
+| `cambium-cli` | Apache-2.0 | Thin command-line client over the API ([CLI](cli.md), ADR-0019) |
 
 The protocol crate validates typed IDs and byte-field pairs and owns the
 [error registry](api/errors.md). The server crate generates the

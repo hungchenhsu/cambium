@@ -40,6 +40,7 @@ data-encoding.workspace = true
 chacha20poly1305.workspace = true
 
 [dev-dependencies]
+cambium-cli.workspace = true
 reqwest.workspace = true
 sqlx.workspace = true
 tempfile.workspace = true
