@@ -375,6 +375,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "ulid",
+ "url",
 ]
 
 [[package]]

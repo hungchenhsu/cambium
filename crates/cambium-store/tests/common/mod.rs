@@ -17,7 +17,11 @@ pub struct TestDatabase {
 
 enum Kind {
     Sqlite(tempfile::TempDir),
-    Postgres(String),
+    Postgres {
+        url: String,
+        server: String,
+        name: String,
+    },
 }
 
 impl TestDatabase {
@@ -36,8 +40,13 @@ impl TestDatabase {
                     .execute(&mut admin)
                     .await
                     .unwrap();
-                let (base, _) = server.rsplit_once('/').expect("a URL with a database name");
-                Kind::Postgres(format!("{base}/{name}"))
+                let mut url = url::Url::parse(&server).expect("a postgres:// URL");
+                url.set_path(&format!("/{name}"));
+                Kind::Postgres {
+                    url: url.into(),
+                    server,
+                    name,
+                }
             }
             None => {
                 assert!(
@@ -51,7 +60,7 @@ impl TestDatabase {
     }
 
     pub fn is_postgres(&self) -> bool {
-        matches!(self.kind, Kind::Postgres(_))
+        matches!(self.kind, Kind::Postgres { .. })
     }
 
     pub async fn open(&self, settings: TokenSettings) -> Arc<dyn CompactionStore> {
@@ -66,7 +75,7 @@ impl TestDatabase {
             Kind::Sqlite(directory) => Arc::new(
                 SqliteStore::open(directory.path().join("metadata.sqlite"), settings).await?,
             ),
-            Kind::Postgres(url) => Arc::new(PostgresStore::open(url, settings).await?),
+            Kind::Postgres { url, .. } => Arc::new(PostgresStore::open(url, settings).await?),
         })
     }
 
@@ -86,13 +95,41 @@ impl TestDatabase {
                     .await
                     .unwrap()
             }
-            Kind::Postgres(url) => {
+            Kind::Postgres { url, .. } => {
                 let mut connection = sqlx::PgConnection::connect(url).await.unwrap();
                 sqlx::query_scalar(&query)
                     .fetch_one(&mut connection)
                     .await
                     .unwrap()
             }
+        }
+    }
+}
+
+/// Drops the per-test Postgres database, closing any connection a test left open.
+impl Drop for TestDatabase {
+    fn drop(&mut self) {
+        let Kind::Postgres { server, name, .. } = &self.kind else {
+            return;
+        };
+        let (server, database) = (server.clone(), name.clone());
+        // Drop runs inside the test's runtime, so use a separate thread and runtime.
+        let dropped = std::thread::spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let mut admin = sqlx::PgConnection::connect(&server).await?;
+                    sqlx::query(&format!("DROP DATABASE IF EXISTS {database} WITH (FORCE)"))
+                        .execute(&mut admin)
+                        .await
+                        .map(|_| ())
+                })
+        })
+        .join();
+        if !matches!(dropped, Ok(Ok(()))) {
+            eprintln!("could not drop test database {name}");
         }
     }
 }

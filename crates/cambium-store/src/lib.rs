@@ -126,7 +126,7 @@ impl RepositoryRecord {
 #[async_trait]
 pub trait Store: Send + Sync {
     /// Closes every connection. Later calls fail.
-    async fn close(&self) {}
+    async fn close(&self);
     async fn deployment_bootstrap(
         &self,
         request: &Bootstrap,

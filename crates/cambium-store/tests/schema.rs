@@ -117,7 +117,9 @@ async fn postgres_schema_has_tenant_prefixes_and_refuses_unknown_migrations() {
         .execute(&mut admin)
         .await
         .unwrap();
-    let url = format!("{}/{name}", server.rsplit_once('/').unwrap().0);
+    let mut url = url::Url::parse(&server).unwrap();
+    url.set_path(&format!("/{name}"));
+    let url = url.to_string();
     let store = cambium_store::PostgresStore::open(&url, TokenSettings::default())
         .await
         .unwrap();
@@ -190,4 +192,9 @@ async fn postgres_schema_has_tenant_prefixes_and_refuses_unknown_migrations() {
         cambium_store::PostgresStore::open(&url, TokenSettings::default()).await,
         Err(StoreError::Migration(_))
     ));
+    db.close().await.unwrap();
+    sqlx::query(&format!("DROP DATABASE {name} WITH (FORCE)"))
+        .execute(&mut admin)
+        .await
+        .unwrap();
 }
