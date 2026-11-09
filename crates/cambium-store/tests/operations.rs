@@ -1,20 +1,19 @@
 use cambium_protocol::{ErrorCode, RequestId};
 use cambium_store::{
-    Bootstrap, SqliteStore, Store, TokenHash, TokenSettings,
-    operations::{Claim, Completion, OperationKey, OperationsStore},
+    Bootstrap, TokenHash, TokenSettings,
+    operations::{Claim, Completion, OperationKey},
 };
 use serde_json::json;
-use sqlx::{Connection as _, SqliteConnection, sqlite::SqliteConnectOptions};
+
+mod common;
+use common::TestDatabase;
 
 const NOW: i64 = 1_800_000_000_000;
 
 #[tokio::test]
 async fn reservations_survive_restart_and_stale_runs_cannot_overwrite_a_retry() {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("metadata.sqlite");
-    let store = SqliteStore::open(&path, TokenSettings::default())
-        .await
-        .unwrap();
+    let database = TestDatabase::new().await;
+    let store = database.open(TokenSettings::default()).await;
     let principal = store
         .deployment_bootstrap(
             &Bootstrap {
@@ -78,9 +77,7 @@ async fn reservations_survive_restart_and_stale_runs_cannot_overwrite_a_retry() 
     );
     store.close().await;
 
-    let store = SqliteStore::open(&path, TokenSettings::default())
-        .await
-        .unwrap();
+    let store = database.open(TokenSettings::default()).await;
     store.deployment_recover_operations(NOW + 4).await.unwrap();
     let second = match store
         .claim_operation(&principal, &key, NOW + 5)
@@ -151,25 +148,14 @@ async fn reservations_survive_restart_and_stale_runs_cannot_overwrite_a_retry() 
         .deployment_purge_expired_responses(NOW + 86_400_001)
         .await
         .unwrap();
-    let mut database = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&path))
-        .await
-        .unwrap();
-    let remaining: i64 = sqlx::query_scalar("SELECT count(*) FROM idempotency")
-        .fetch_one(&mut database)
-        .await
-        .unwrap();
+    let remaining = database.count("idempotency").await;
     assert_eq!(remaining, 0);
 }
 
 #[tokio::test]
 async fn a_key_and_tombstoned_repository_remain_scoped_to_their_tenant() {
-    let directory = tempfile::tempdir().unwrap();
-    let store = SqliteStore::open(
-        directory.path().join("metadata.sqlite"),
-        TokenSettings::default(),
-    )
-    .await
-    .unwrap();
+    let database = TestDatabase::new().await;
+    let store = database.open(TokenSettings::default()).await;
     let mut users = Vec::new();
     for (slug, byte) in [("a", 1), ("b", 2)] {
         users.push(

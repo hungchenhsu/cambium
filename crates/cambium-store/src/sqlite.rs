@@ -347,6 +347,9 @@ impl SqliteStore {
 
 #[async_trait]
 impl Store for SqliteStore {
+    async fn close(&self) {
+        SqliteStore::close(self).await;
+    }
     async fn deployment_bootstrap(&self, input: &Bootstrap, now_ms: i64) -> StoreResult<Principal> {
         if input.tenant_slug.is_empty()
             || input.tenant_slug.len() > 100

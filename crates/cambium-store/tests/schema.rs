@@ -96,3 +96,105 @@ async fn a_binary_refuses_unknown_or_modified_migrations() {
         Err(StoreError::Migration(_))
     ));
 }
+
+/// The Postgres schema follows the same tenant rules and migration refusal.
+/// Runs only when CAMBIUM_TEST_POSTGRES_URL names a test server.
+#[tokio::test]
+async fn postgres_schema_has_tenant_prefixes_and_refuses_unknown_migrations() {
+    let Some(server) = std::env::var("CAMBIUM_TEST_POSTGRES_URL")
+        .ok()
+        .filter(|url| !url.is_empty())
+    else {
+        eprintln!("skipped: CAMBIUM_TEST_POSTGRES_URL is not set");
+        return;
+    };
+    let name = format!(
+        "cambium_schema_{}",
+        ulid::Ulid::new().to_string().to_ascii_lowercase()
+    );
+    let mut admin = sqlx::PgConnection::connect(&server).await.unwrap();
+    sqlx::query(&format!("CREATE DATABASE {name}"))
+        .execute(&mut admin)
+        .await
+        .unwrap();
+    let mut url = url::Url::parse(&server).unwrap();
+    url.set_path(&format!("/{name}"));
+    let url = url.to_string();
+    let store = cambium_store::PostgresStore::open(&url, TokenSettings::default())
+        .await
+        .unwrap();
+    // A second writer is refused at once while the first holds the advisory lock.
+    let started = std::time::Instant::now();
+    match cambium_store::PostgresStore::open(&url, TokenSettings::default()).await {
+        Err(StoreError::Request(error)) => {
+            assert_eq!(error.code, cambium_protocol::ErrorCode::InvalidRequest);
+            assert_eq!(error.details["field"], "database_url");
+        }
+        Err(other) => panic!("unexpected error: {other:?}"),
+        Ok(_) => panic!("a second writer opened the store"),
+    }
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    let mut db = sqlx::PgConnection::connect(&url).await.unwrap();
+    let tables: Vec<String> = sqlx::query_scalar(
+        "SELECT table_name::text FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'",
+    )
+    .fetch_all(&mut db)
+    .await
+    .unwrap();
+    assert_eq!(tables.len(), 12, "{tables:?}");
+    for table in tables {
+        if ["tenants", "_sqlx_migrations"].contains(&table.as_str()) {
+            continue;
+        }
+        let nullable: String = sqlx::query_scalar("SELECT is_nullable::text FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 AND column_name = 'tenant_id'")
+            .bind(&table)
+            .fetch_one(&mut db)
+            .await
+            .unwrap_or_else(|_| panic!("{table} has no tenant_id"));
+        assert_eq!(nullable, "NO", "{table}");
+        for actor_column in ["created_by", "created_by_kind"] {
+            let present: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2)")
+                .bind(&table)
+                .bind(actor_column)
+                .fetch_one(&mut db)
+                .await
+                .unwrap();
+            assert!(present, "{table}.{actor_column}");
+        }
+        let firsts: Vec<(String, String)> = sqlx::query_as("SELECT i.relname::text, a.attname::text FROM pg_index x JOIN pg_class i ON i.oid = x.indexrelid JOIN pg_class t ON t.oid = x.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = x.indkey[0] WHERE n.nspname = 'public' AND t.relname = $1 AND x.indisunique")
+            .bind(&table)
+            .fetch_all(&mut db)
+            .await
+            .unwrap();
+        assert!(!firsts.is_empty(), "{table}");
+        for (index, first) in firsts {
+            assert_eq!(first, "tenant_id", "{table}.{index}");
+        }
+    }
+    store.close().await;
+    sqlx::query("INSERT INTO _sqlx_migrations (version, description, installed_on, success, checksum, execution_time) VALUES (9999, 'future', now(), true, '\\x00', 1)")
+        .execute(&mut db)
+        .await
+        .unwrap();
+    assert!(matches!(
+        cambium_store::PostgresStore::open(&url, TokenSettings::default()).await,
+        Err(StoreError::Migration(_))
+    ));
+    sqlx::query("DELETE FROM _sqlx_migrations WHERE version = 9999")
+        .execute(&mut db)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE _sqlx_migrations SET checksum = '\\x00' WHERE version = 1")
+        .execute(&mut db)
+        .await
+        .unwrap();
+    assert!(matches!(
+        cambium_store::PostgresStore::open(&url, TokenSettings::default()).await,
+        Err(StoreError::Migration(_))
+    ));
+    db.close().await.unwrap();
+    sqlx::query(&format!("DROP DATABASE {name} WITH (FORCE)"))
+        .execute(&mut admin)
+        .await
+        .unwrap();
+}

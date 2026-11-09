@@ -10,7 +10,9 @@ use serde::{Deserialize, Serialize};
 pub mod compaction;
 pub mod lifecycle;
 pub mod operations;
+pub mod postgres;
 pub mod sqlite;
+pub use postgres::PostgresStore;
 pub use sqlite::SqliteStore;
 
 #[derive(Debug, thiserror::Error)]
@@ -123,6 +125,8 @@ impl RepositoryRecord {
 /// Deployment methods are deliberately named separately from tenant operations.
 #[async_trait]
 pub trait Store: Send + Sync {
+    /// Closes every connection. Later calls fail.
+    async fn close(&self);
     async fn deployment_bootstrap(
         &self,
         request: &Bootstrap,

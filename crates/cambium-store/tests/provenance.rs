@@ -1,24 +1,22 @@
 use cambium_protocol::{ErrorCode, IdentityKind, ObjectId, Principal, Scope};
 use cambium_store::{
-    Bootstrap, CreateIdentity, MintToken, SqliteStore, Store, StoreError, TokenHash, TokenSettings,
-    operations::{OperationsStore, ProvenanceClaims},
+    Bootstrap, CreateIdentity, MintToken, StoreError, TokenHash, TokenSettings,
+    compaction::CompactionStore, operations::ProvenanceClaims,
 };
-use tempfile::TempDir;
+use std::sync::Arc;
+
+mod common;
+use common::TestDatabase;
 
 const NOW: i64 = 1_800_000_000_000;
 
-async fn database() -> (TempDir, SqliteStore) {
-    let directory = tempfile::tempdir().unwrap();
-    let store = SqliteStore::open(
-        directory.path().join("metadata.sqlite"),
-        TokenSettings::default(),
-    )
-    .await
-    .unwrap();
-    (directory, store)
+async fn database() -> (TestDatabase, Arc<dyn CompactionStore>) {
+    let database = TestDatabase::new().await;
+    let store = database.open(TokenSettings::default()).await;
+    (database, store)
 }
 
-async fn bootstrap(store: &SqliteStore, slug: &str, hash: u8) -> Principal {
+async fn bootstrap(store: &dyn CompactionStore, slug: &str, hash: u8) -> Principal {
     store
         .deployment_bootstrap(
             &Bootstrap {
@@ -54,8 +52,8 @@ fn assert_code<T: std::fmt::Debug>(result: Result<T, StoreError>, expected: Erro
 #[tokio::test]
 async fn provenance_is_attested_tenant_scoped_first_wins_and_deleted_with_the_repository() {
     let (_directory, store) = database().await;
-    let a = bootstrap(&store, "a", 1).await;
-    let b = bootstrap(&store, "b", 2).await;
+    let a = bootstrap(&*store, "a", 1).await;
+    let b = bootstrap(&*store, "b", 2).await;
     let repository = store
         .reserve_repository(&a, "project", "main", NOW)
         .await
