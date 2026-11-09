@@ -1,6 +1,6 @@
 mod common;
 
-use std::{path::Path, process::Command, sync::Arc};
+use std::{collections::BTreeSet, path::Path, process::Command, sync::Arc};
 
 use cambium_backend::{
     Backend as _,
@@ -357,6 +357,10 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
         println!("{}", String::from_utf8_lossy(&output.stdout));
     }
 
+    // Every operation that names another tenant's resource is denied as
+    // not_found over HTTP and MCP; the exhaustiveness check below fails when a
+    // new operation lacks a case.
+    let mut denied_everywhere = BTreeSet::new();
     for (name, arguments) in [
         ("get_repository", json!({"repository_id": repo})),
         ("delete_repository", json!({"repository_id": repo})),
@@ -391,6 +395,7 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
             json!({"repository_id": repo, "from": "HEAD", "to": "HEAD"}),
         ),
     ] {
+        denied_everywhere.insert(name);
         let response = api.operation(other, name, arguments.clone()).await;
         assert_eq!(response.status(), 404);
         assert_eq!(
@@ -450,6 +455,7 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
             json!({"repository_id": repo, "branch_id": branch_id}),
         ),
     ] {
+        denied_everywhere.insert(name);
         assert_eq!(
             api.operation(other, name, arguments.clone()).await.status(),
             404
@@ -466,6 +472,57 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
             "not_found"
         );
     }
+    // Operations that take no resource ID stay inside the caller's tenant.
+    let listed = api.success(other, "list_repositories", json!({})).await;
+    assert_eq!(listed["repositories"], json!([]));
+    let listed = api
+        .rpc(
+            other,
+            "tools/call",
+            json!({"name": "list_repositories", "arguments": {}}),
+        )
+        .await;
+    assert_eq!(
+        listed["result"]["structuredContent"]["repositories"],
+        json!([])
+    );
+    let same_name = api
+        .success(other, "create_repository", json!({"name": "project"}))
+        .await;
+    assert_ne!(same_name["repository_id"], *repo, "names are per tenant");
+    assert_eq!(
+        api.success(other, "list_repositories", json!({})).await["repositories"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    let hidden = api
+        .operation(
+            token,
+            "get_repository",
+            json!({"repository_id": same_name["repository_id"]}),
+        )
+        .await;
+    assert_eq!(
+        hidden.status(),
+        404,
+        "the other tenant's repository is hidden in both directions"
+    );
+    let mut covered = denied_everywhere.clone();
+    covered.extend(["list_repositories", "create_repository"]);
+    let tool_names: BTreeSet<_> = cambium_server::transport::tools()
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(
+        covered
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<BTreeSet<_>>(),
+        tool_names,
+        "every operation needs a cross-tenant case"
+    );
     for (name, arguments) in [
         (
             "get_branch",
