@@ -9,6 +9,8 @@ import tempfile
 
 DATA = Path("/var/lib/cambium/state")
 SHARED_KEY = Path("/run/cambium-hook/signing.pem")
+# scripts/compose_backup.py writes this before a restore and removes it after.
+RESTORE_INCOMPLETE = Path("/var/lib/cambium/.restore-incomplete")
 CONFIG = Path("/etc/cambium.toml")
 REQUIRED = (
     "responses.key", "hook-signing.pem", "hook-public.pem",
@@ -72,6 +74,10 @@ def share_key(source: bytes) -> None:
 def main() -> None:
     """Only the hook signing key is shared with the backend container."""
     os.umask(0o077)
+    if RESTORE_INCOMPLETE.exists():
+        raise SystemExit(
+            "A restore did not finish; run `docker compose down --volumes` and restore again"
+        )
     initialize_state()
     share_key((DATA / "hook-signing.pem").read_bytes())
     print("Local deployment initialized")

@@ -30,11 +30,18 @@ keys. Store them encrypted, with access limited like the deployment itself.
 python3 scripts/compose_backup.py backup ~/cambium-backups/2026-11-10
 ```
 
-The script stops `cambium` and `enroute` and streams each volume as a tar
-archive from a one-off container that uses the deployment's own image and mount
-points. It then writes `manifest.json` with each archive's SHA-256 and starts
-the services again. Add `--no-restart` to leave them stopped. The target
-directory must be new or empty.
+The script refuses to run unless both services' containers exist, so it never
+archives fresh empty volumes by mistake. It stops `cambium` and `enroute` and
+streams each volume as a tar archive from a one-off container that uses the
+deployment's own image and mount points. It checks that each archive holds a
+complete state (the metadata database and keys, and Enroute's node state),
+writes `manifest.json` with each archive's SHA-256, and starts the services
+again, also when the backup fails. Add `--no-restart` to leave them stopped.
+The target directory must be new or empty.
+
+`cambium` stops on SIGINT. Enroute receives Docker's default stop signal and is
+killed if it does not exit in time. Either way both services have stopped
+before archiving begins, so the two archives describe the same moment.
 
 ## Restore
 
@@ -47,10 +54,15 @@ docker compose down --volumes
 python3 scripts/compose_backup.py restore ~/cambium-backups/2026-11-10
 ```
 
-The script checks the archives against the manifest, refuses to continue while
-any container of the deployment exists, creates the volumes, refuses again if
-any is not empty, extracts each archive with ownership
-and permissions preserved, and starts the deployment. Startup recovers any
+The script checks the archives against the manifest and for a complete state,
+refuses to continue while any container of the deployment exists, creates the
+volumes, refuses again if any is not empty, and extracts each archive with its
+permissions preserved; the files belong to the containers' unprivileged user.
+It then starts the deployment.
+
+While it extracts, a marker in the metadata volume makes initialization refuse
+to start. If a restore fails part way, the deployment therefore cannot be
+started on partial state: run `docker compose down --volumes` and restore again. Startup recovers any
 lifecycle operation that was interrupted when the backup was taken.
 
 A restore returns every token, identity, and revocation to its state at backup
@@ -88,6 +100,10 @@ with every layer in the object bucket. It kills Enroute with `SIGKILL` after
 acknowledged writes and restarts it on the same directory. It then copies the
 stopped metadata and Enroute directories, starts a deployment on the copy with
 new ports, and requires the same file contents, idempotent replays, and
-provenance, plus new writes that leave the original untouched. As a self-test,
-leaving out Enroute's node state or its object bucket from the copy makes the
-test fail.
+provenance, plus new writes that leave the original untouched. When this test
+was written, leaving Enroute's node state or its object bucket out of the copy
+made it fail; that negative check was run by hand, not in CI.
+
+The compose checks after a crash or restore read the repository, list the tree
+of the commit the agent loop wrote, and check tenant isolation and the active
+generation's storage.
