@@ -5,7 +5,7 @@ pub mod errors;
 pub mod identity;
 pub mod ids;
 
-pub use errors::{ApiError, ErrorCode, ErrorResponse};
+pub use errors::{ApiError, ErrorCode, ErrorResponse, Warning, WarningCode};
 pub use identity::{Actor, IdentityKind, Principal, Scope};
 pub use ids::{
     BranchId, CompactionId, IdentityId, ObjectId, RepositoryId, RequestId, TenantId, TokenId,

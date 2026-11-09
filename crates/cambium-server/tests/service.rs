@@ -268,6 +268,19 @@ async fn shared_operations_preserve_authorization_bytes_and_idempotent_effects()
     ]});
     let first = success(call(&app, token, "write_changeset", write.clone()).await);
     assert_eq!(first["warnings"][0]["code"], "path_collision");
+    let groups = first["warnings"][0]["details"]["groups"]
+        .as_array()
+        .unwrap();
+    assert_eq!(groups.len(), 2);
+    for group in groups {
+        let members = group.as_array().unwrap();
+        assert_eq!(members.len(), 2);
+        for member in members {
+            let member = member.as_object().unwrap();
+            assert_eq!(member.len(), 1);
+            assert!(member.contains_key("path") || member.contains_key("path_b64"));
+        }
+    }
     assert_eq!(
         success(call(&app, token, "write_changeset", write.clone()).await),
         first

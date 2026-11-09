@@ -95,6 +95,38 @@ impl ErrorCode {
         }
     }
 
+    /// JSON Schema for `error.details`, published in the OpenAPI description.
+    pub fn details_schema(self) -> Value {
+        let object_id = json!({"type": "string", "pattern": "^[0-9a-f]{40}$"});
+        match self {
+            Self::InvalidRequest => json!({
+                "type": "object",
+                "properties": {"field": {"type": "string"}, "reason": {"type": "string"}},
+                "required": ["field", "reason"],
+                "additionalProperties": false
+            }),
+            Self::RefConflict => json!({
+                "type": "object",
+                "properties": {"ref": {"type": "string"}, "expected": object_id, "actual": object_id},
+                "required": ["ref"],
+                "additionalProperties": false
+            }),
+            Self::PayloadTooLarge => json!({
+                "type": "object",
+                "properties": {"limit_bytes": {"type": "integer", "minimum": 0}},
+                "required": ["limit_bytes"],
+                "additionalProperties": false
+            }),
+            Self::UnsupportedPath => json!({
+                "type": "object",
+                "properties": {"path": {"type": "string"}, "path_b64": {"type": "string", "contentEncoding": "base64"}},
+                "oneOf": [{"required": ["path"]}, {"required": ["path_b64"]}],
+                "additionalProperties": false
+            }),
+            _ => json!({"type": "object", "maxProperties": 0}),
+        }
+    }
+
     pub const fn message(self) -> &'static str {
         match self {
             Self::Unauthenticated => "Authentication is required",
@@ -166,10 +198,47 @@ pub struct ErrorBody {
     pub request_id: RequestId,
 }
 
+/// Warning codes share the registry's naming and stability rules.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WarningCode {
     PathCollision,
+}
+
+impl WarningCode {
+    pub const ALL: [Self; 1] = [Self::PathCollision];
+
+    pub const fn details(self) -> &'static str {
+        match self {
+            Self::PathCollision => "groups",
+        }
+    }
+
+    pub const fn message(self) -> &'static str {
+        match self {
+            Self::PathCollision => "Some paths collide under case folding or Unicode normalization",
+        }
+    }
+
+    /// JSON Schema for `warnings[].details`, published in the OpenAPI description.
+    pub fn details_schema(self) -> Value {
+        match self {
+            Self::PathCollision => json!({
+                "type": "object",
+                "properties": {"groups": {
+                    "type": "array",
+                    "items": {"type": "array", "minItems": 2, "items": {
+                        "type": "object",
+                        "properties": {"path": {"type": "string"}, "path_b64": {"type": "string", "contentEncoding": "base64"}},
+                        "oneOf": [{"required": ["path"]}, {"required": ["path_b64"]}],
+                        "additionalProperties": false
+                    }}
+                }},
+                "required": ["groups"],
+                "additionalProperties": false
+            }),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -177,6 +246,16 @@ pub struct Warning {
     pub code: WarningCode,
     pub message: String,
     pub details: serde_json::Map<String, Value>,
+}
+
+impl Warning {
+    pub fn new(code: WarningCode, details: serde_json::Map<String, Value>) -> Self {
+        Self {
+            code,
+            message: code.message().into(),
+            details,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -188,7 +267,7 @@ mod tests {
         let document = include_str!("../../../docs/api/errors.md");
         let rows: Vec<_> = document
             .lines()
-            .filter(|line| line.starts_with("| `"))
+            .filter(|line| line.starts_with("| `") && line.matches('|').count() == 5)
             .collect();
         assert_eq!(rows.len(), ErrorCode::ALL.len());
         for code in ErrorCode::ALL {
@@ -204,6 +283,58 @@ mod tests {
                 code.details()
             );
             assert!(rows.contains(&expected.as_str()), "{expected}");
+        }
+    }
+
+    #[test]
+    fn published_warning_registry_matches_codes_and_details() {
+        let document = include_str!("../../../docs/api/errors.md");
+        let rows: Vec<_> = document
+            .lines()
+            .filter(|line| line.starts_with("| `") && line.matches('|').count() == 3)
+            .collect();
+        assert_eq!(rows.len(), WarningCode::ALL.len());
+        for code in WarningCode::ALL {
+            let name = serde_json::to_value(code).unwrap();
+            let expected = format!("| `{}` | {} |", name.as_str().unwrap(), code.details());
+            assert!(rows.contains(&expected.as_str()), "{expected}");
+        }
+    }
+
+    #[test]
+    fn detail_schemas_name_exactly_the_documented_fields() {
+        for code in ErrorCode::ALL {
+            let schema = code.details_schema();
+            assert_eq!(schema["type"], "object");
+            let mut names: Vec<_> = schema["properties"]
+                .as_object()
+                .map(|properties| properties.keys().cloned().collect())
+                .unwrap_or_default();
+            names.sort();
+            let mut documented: Vec<_> = match code.details() {
+                "empty object" => Vec::new(),
+                summary => summary
+                    .split([',', ' '])
+                    .map(|name| name.trim_end_matches('?'))
+                    .filter(|name| !name.is_empty() && *name != "or")
+                    .map(str::to_owned)
+                    .collect(),
+            };
+            documented.sort();
+            assert_eq!(names, documented, "{code:?}");
+            let required: Vec<_> = code
+                .details()
+                .split(", ")
+                .filter(|name| !name.ends_with('?') && !name.contains(' '))
+                .collect();
+            for name in required {
+                assert!(
+                    schema["required"]
+                        .as_array()
+                        .is_some_and(|fields| fields.iter().any(|field| field == name)),
+                    "{code:?} {name}"
+                );
+            }
         }
     }
 }

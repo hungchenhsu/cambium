@@ -1,0 +1,3171 @@
+{
+  "components": {
+    "headers": {
+      "IdempotentReplayed": {
+        "description": "Present with the value true when the stored response of an earlier request is replayed.",
+        "schema": {
+          "enum": [
+            "true"
+          ],
+          "type": "string"
+        }
+      },
+      "RequestId": {
+        "description": "Identifies the request in server logs.",
+        "schema": {
+          "pattern": "^req_[0-9a-z]{26}$",
+          "type": "string"
+        }
+      },
+      "RetryAfter": {
+        "description": "Seconds to wait before retrying, when the server knows a useful delay.",
+        "schema": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      }
+    },
+    "parameters": {
+      "IdempotencyKey": {
+        "description": "1 to 255 printable ASCII characters. Must match idempotency_key when both are sent. Replays return Idempotent-Replayed: true.",
+        "in": "header",
+        "name": "Idempotency-Key",
+        "required": false,
+        "schema": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[ -~]+$",
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "Error400": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "description": "Error codes: invalid_request.",
+        "headers": {
+          "Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        }
+      },
+      "Error401": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "description": "Error codes: unauthenticated.",
+        "headers": {
+          "Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          },
+          "WWW-Authenticate": {
+            "description": "Always Bearer.",
+            "schema": {
+              "enum": [
+                "Bearer"
+              ],
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Error403": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "description": "Error codes: permission_denied.",
+        "headers": {
+          "Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        }
+      },
+      "Error404": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "description": "Error codes: not_found.",
+        "headers": {
+          "Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        }
+      },
+      "Error409": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "description": "Error codes: already_exists, ref_conflict, idempotency_key_in_use, contention.",
+        "headers": {
+          "Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          },
+          "Retry-After": {
+            "$ref": "#/components/headers/RetryAfter"
+          }
+        }
+      },
+      "Error410": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "description": "Error codes: branch_expired.",
+        "headers": {
+          "Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        }
+      },
+      "Error413": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "description": "Error codes: payload_too_large.",
+        "headers": {
+          "Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        }
+      },
+      "Error422": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "description": "Error codes: unsupported_path, idempotency_key_reused.",
+        "headers": {
+          "Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        }
+      },
+      "Error500": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "description": "Error codes: internal.",
+        "headers": {
+          "Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          },
+          "Retry-After": {
+            "$ref": "#/components/headers/RetryAfter"
+          }
+        }
+      },
+      "Error503": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "description": "Error codes: repository_busy, backend_unavailable.",
+        "headers": {
+          "Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          },
+          "Retry-After": {
+            "$ref": "#/components/headers/RetryAfter"
+          }
+        }
+      }
+    },
+    "schemas": {
+      "BranchId": {
+        "type": "string"
+      },
+      "CompactionId": {
+        "type": "string"
+      },
+      "CreateEphemeralBranchInput": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "start_commit": {
+            "$ref": "#/components/schemas/ObjectId"
+          },
+          "ttl_seconds": {
+            "default": 3600,
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "repository_id",
+          "name",
+          "start_commit"
+        ],
+        "type": "object"
+      },
+      "CreateIdentityInput": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PublicIdentityKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IdentityId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "name"
+        ],
+        "type": "object"
+      },
+      "CreateRepositoryInput": {
+        "additionalProperties": false,
+        "properties": {
+          "default_branch": {
+            "default": "main",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "DeleteRepositoryInput": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          }
+        },
+        "required": [
+          "repository_id"
+        ],
+        "type": "object"
+      },
+      "DiffInput": {
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "limit": {
+            "default": 100,
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "page_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository_id",
+          "from",
+          "to"
+        ],
+        "type": "object"
+      },
+      "DisableIdentityInput": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "identity_id": {
+            "$ref": "#/components/schemas/IdentityId"
+          }
+        },
+        "required": [
+          "identity_id"
+        ],
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "additionalProperties": false,
+        "description": "Clients branch on error.code. Treat an unknown code by its HTTP status and retryable flag.",
+        "properties": {
+          "error": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "const": "unauthenticated"
+                  },
+                  "details": {
+                    "maxProperties": 0,
+                    "type": "object"
+                  },
+                  "message": {
+                    "description": "English text for people and logs. Never translated; may change.",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "pattern": "^req_[0-9a-z]{26}$",
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "const": false
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable",
+                  "details",
+                  "request_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "const": "permission_denied"
+                  },
+                  "details": {
+                    "maxProperties": 0,
+                    "type": "object"
+                  },
+                  "message": {
+                    "description": "English text for people and logs. Never translated; may change.",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "pattern": "^req_[0-9a-z]{26}$",
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "const": false
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable",
+                  "details",
+                  "request_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "const": "not_found"
+                  },
+                  "details": {
+                    "maxProperties": 0,
+                    "type": "object"
+                  },
+                  "message": {
+                    "description": "English text for people and logs. Never translated; may change.",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "pattern": "^req_[0-9a-z]{26}$",
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "const": false
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable",
+                  "details",
+                  "request_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "const": "invalid_request"
+                  },
+                  "details": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "field": {
+                        "type": "string"
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "reason"
+                    ],
+                    "type": "object"
+                  },
+                  "message": {
+                    "description": "English text for people and logs. Never translated; may change.",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "pattern": "^req_[0-9a-z]{26}$",
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "const": false
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable",
+                  "details",
+                  "request_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "const": "already_exists"
+                  },
+                  "details": {
+                    "maxProperties": 0,
+                    "type": "object"
+                  },
+                  "message": {
+                    "description": "English text for people and logs. Never translated; may change.",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "pattern": "^req_[0-9a-z]{26}$",
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "const": false
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable",
+                  "details",
+                  "request_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "const": "ref_conflict"
+                  },
+                  "details": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "actual": {
+                        "pattern": "^[0-9a-f]{40}$",
+                        "type": "string"
+                      },
+                      "expected": {
+                        "pattern": "^[0-9a-f]{40}$",
+                        "type": "string"
+                      },
+                      "ref": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "ref"
+                    ],
+                    "type": "object"
+                  },
+                  "message": {
+                    "description": "English text for people and logs. Never translated; may change.",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "pattern": "^req_[0-9a-z]{26}$",
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "const": false
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable",
+                  "details",
+                  "request_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "const": "branch_expired"
+                  },
+                  "details": {
+                    "maxProperties": 0,
+                    "type": "object"
+                  },
+                  "message": {
+                    "description": "English text for people and logs. Never translated; may change.",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "pattern": "^req_[0-9a-z]{26}$",
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "const": false
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable",
+                  "details",
+                  "request_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "const": "payload_too_large"
+                  },
+                  "details": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "limit_bytes": {
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "limit_bytes"
+                    ],
+                    "type": "object"
+                  },
+                  "message": {
+                    "description": "English text for people and logs. Never translated; may change.",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "pattern": "^req_[0-9a-z]{26}$",
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "const": false
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable",
+                  "details",
+                  "request_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "const": "unsupported_path"
+                  },
+                  "details": {
+                    "additionalProperties": false,
+                    "oneOf": [
+                      {
+                        "required": [
+                          "path"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "path_b64"
+                        ]
+                      }
+                    ],
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "path_b64": {
+                        "contentEncoding": "base64",
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "message": {
+                    "description": "English text for people and logs. Never translated; may change.",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "pattern": "^req_[0-9a-z]{26}$",
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "const": false
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable",
+                  "details",
+                  "request_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "const": "idempotency_key_reused"
+                  },
+                  "details": {
+                    "maxProperties": 0,
+                    "type": "object"
+                  },
+                  "message": {
+                    "description": "English text for people and logs. Never translated; may change.",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "pattern": "^req_[0-9a-z]{26}$",
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "const": false
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable",
+                  "details",
+                  "request_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "const": "idempotency_key_in_use"
+                  },
+                  "details": {
+                    "maxProperties": 0,
+                    "type": "object"
+                  },
+                  "message": {
+                    "description": "English text for people and logs. Never translated; may change.",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "pattern": "^req_[0-9a-z]{26}$",
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable",
+                  "details",
+                  "request_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "const": "contention"
+                  },
+                  "details": {
+                    "maxProperties": 0,
+                    "type": "object"
+                  },
+                  "message": {
+                    "description": "English text for people and logs. Never translated; may change.",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "pattern": "^req_[0-9a-z]{26}$",
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable",
+                  "details",
+                  "request_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "const": "repository_busy"
+                  },
+                  "details": {
+                    "maxProperties": 0,
+                    "type": "object"
+                  },
+                  "message": {
+                    "description": "English text for people and logs. Never translated; may change.",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "pattern": "^req_[0-9a-z]{26}$",
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable",
+                  "details",
+                  "request_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "const": "backend_unavailable"
+                  },
+                  "details": {
+                    "maxProperties": 0,
+                    "type": "object"
+                  },
+                  "message": {
+                    "description": "English text for people and logs. Never translated; may change.",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "pattern": "^req_[0-9a-z]{26}$",
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable",
+                  "details",
+                  "request_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "const": "internal"
+                  },
+                  "details": {
+                    "maxProperties": 0,
+                    "type": "object"
+                  },
+                  "message": {
+                    "description": "English text for people and logs. Never translated; may change.",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "pattern": "^req_[0-9a-z]{26}$",
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable",
+                  "details",
+                  "request_id"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "ExpectedTip": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "absent",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "at",
+                "type": "string"
+              },
+              "object_id": {
+                "$ref": "#/components/schemas/ObjectId"
+              }
+            },
+            "required": [
+              "kind",
+              "object_id"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "ExtendBranchInput": {
+        "additionalProperties": false,
+        "properties": {
+          "branch_id": {
+            "$ref": "#/components/schemas/BranchId"
+          },
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "ttl_seconds": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "repository_id",
+          "branch_id",
+          "ttl_seconds"
+        ],
+        "type": "object"
+      },
+      "FileChange": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "const": "put",
+                "type": "string"
+              },
+              "contents": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "contents_b64": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "mode": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/FileMode"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "path": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "path_b64": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "const": "delete",
+                "type": "string"
+              },
+              "path": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "path_b64": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "FileMode": {
+        "enum": [
+          "regular",
+          "executable",
+          "symlink"
+        ],
+        "type": "string"
+      },
+      "GetBranchInput": {
+        "additionalProperties": false,
+        "properties": {
+          "branch_id": {
+            "$ref": "#/components/schemas/BranchId"
+          },
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          }
+        },
+        "required": [
+          "repository_id",
+          "branch_id"
+        ],
+        "type": "object"
+      },
+      "GetIdentityInput": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "identity_id": {
+            "$ref": "#/components/schemas/IdentityId"
+          }
+        },
+        "required": [
+          "identity_id"
+        ],
+        "type": "object"
+      },
+      "GetReclamationInput": {
+        "additionalProperties": false,
+        "properties": {
+          "compaction_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompactionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "limit": {
+            "default": 100,
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "page_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          }
+        },
+        "required": [
+          "repository_id"
+        ],
+        "type": "object"
+      },
+      "GetRepositoryInput": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          }
+        },
+        "required": [
+          "repository_id"
+        ],
+        "type": "object"
+      },
+      "GitIdentity": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "time": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "time"
+        ],
+        "type": "object"
+      },
+      "IdentityId": {
+        "type": "string"
+      },
+      "ListBranchesInput": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "limit": {
+            "default": 100,
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "page_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          }
+        },
+        "required": [
+          "repository_id"
+        ],
+        "type": "object"
+      },
+      "ListRepositoriesInput": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "limit": {
+            "default": 100,
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "page_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "ListTreeInput": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "limit": {
+            "default": 100,
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "page_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recursive": {
+            "default": true,
+            "type": "boolean"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "revision": {
+            "default": "HEAD",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository_id"
+        ],
+        "type": "object"
+      },
+      "MintTokenInput": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "identity_id": {
+            "$ref": "#/components/schemas/IdentityId"
+          },
+          "repositories": {
+            "items": {
+              "$ref": "#/components/schemas/RepositoryId"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          },
+          "ttl_seconds": {
+            "default": 3600,
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "identity_id",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "ObjectId": {
+        "description": "SHA-1 at the current protocol version. Never accepts abbreviated hashes.",
+        "type": "string"
+      },
+      "OperationResult": {
+        "additionalProperties": true,
+        "description": "Operation-specific JSON object; see docs/api/operations.md. Absent values are omitted, never null. Unknown fields must be ignored.",
+        "properties": {
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/Warning"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "PromoteBranchInput": {
+        "additionalProperties": false,
+        "properties": {
+          "branch_id": {
+            "$ref": "#/components/schemas/BranchId"
+          },
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          }
+        },
+        "required": [
+          "repository_id",
+          "branch_id"
+        ],
+        "type": "object"
+      },
+      "PublicIdentityKind": {
+        "description": "System actors are internal and cannot be created through an operation.",
+        "enum": [
+          "human",
+          "agent"
+        ],
+        "type": "string"
+      },
+      "ReadFileInput": {
+        "additionalProperties": false,
+        "properties": {
+          "always_base64": {
+            "default": false,
+            "type": "boolean"
+          },
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path_b64": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "revision": {
+            "default": "HEAD",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository_id"
+        ],
+        "type": "object"
+      },
+      "RepositoryId": {
+        "type": "string"
+      },
+      "RequestCompactionInput": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          }
+        },
+        "required": [
+          "repository_id"
+        ],
+        "type": "object"
+      },
+      "RevokeTokenInput": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "token_id": {
+            "$ref": "#/components/schemas/TokenId"
+          }
+        },
+        "required": [
+          "token_id"
+        ],
+        "type": "object"
+      },
+      "Scope": {
+        "enum": [
+          "repo:read",
+          "repo:write",
+          "repo:admin",
+          "tenant:admin"
+        ],
+        "type": "string"
+      },
+      "TokenId": {
+        "type": "string"
+      },
+      "Warning": {
+        "description": "Clients ignore warning codes they do not know.",
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "const": "path_collision"
+              },
+              "details": {
+                "additionalProperties": false,
+                "properties": {
+                  "groups": {
+                    "items": {
+                      "items": {
+                        "additionalProperties": false,
+                        "oneOf": [
+                          {
+                            "required": [
+                              "path"
+                            ]
+                          },
+                          {
+                            "required": [
+                              "path_b64"
+                            ]
+                          }
+                        ],
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "path_b64": {
+                            "contentEncoding": "base64",
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "minItems": 2,
+                      "type": "array"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "groups"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "details"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "WriteChangesetInput": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GitIdentity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "branch": {
+            "default": "main",
+            "type": "string"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/FileChange"
+            },
+            "type": "array"
+          },
+          "committer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GitIdentity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expected": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpectedTip"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "idempotency_key": {
+            "description": "Reuse this key to retry the same mutation safely.",
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[ -~]+$",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          }
+        },
+        "required": [
+          "repository_id",
+          "message",
+          "changes"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "description": "Opaque, short-lived Cambium token (ADR-0011).",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "JSON operations over HTTPS (ADR-0012). Every request is authenticated with a Bearer token that selects the tenant. Unknown request fields fail with invalid_request. Machine output is English and never depends on locale.",
+    "title": "Cambium API",
+    "version": "v1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/operations/create_ephemeral_branch": {
+      "post": {
+        "operationId": "create_ephemeral_branch",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEphemeralBranchInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "Create a recoverable branch with a bounded TTL.",
+        "tags": [
+          "branches"
+        ]
+      }
+    },
+    "/v1/operations/create_identity": {
+      "post": {
+        "operationId": "create_identity",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateIdentityInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "Create a human or agent identity; agents require a human owner.",
+        "tags": [
+          "identities"
+        ]
+      }
+    },
+    "/v1/operations/create_repository": {
+      "post": {
+        "operationId": "create_repository",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRepositoryInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "Create a repository in the authenticated tenant.",
+        "tags": [
+          "repositories"
+        ]
+      }
+    },
+    "/v1/operations/delete_repository": {
+      "post": {
+        "operationId": "delete_repository",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteRepositoryInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "Delete a repository and all its storage generations.",
+        "tags": [
+          "repositories"
+        ]
+      }
+    },
+    "/v1/operations/diff": {
+      "post": {
+        "operationId": "diff",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiffInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "Compare paths, modes, and object IDs between two revisions.",
+        "tags": [
+          "content"
+        ]
+      }
+    },
+    "/v1/operations/disable_identity": {
+      "post": {
+        "operationId": "disable_identity",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisableIdentityInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "Disable an identity and invalidate its tokens.",
+        "tags": [
+          "identities"
+        ]
+      }
+    },
+    "/v1/operations/extend_branch": {
+      "post": {
+        "operationId": "extend_branch",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtendBranchInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "Extend a live ephemeral branch from the request time without shortening its TTL.",
+        "tags": [
+          "branches"
+        ]
+      }
+    },
+    "/v1/operations/get_branch": {
+      "post": {
+        "operationId": "get_branch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetBranchInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "Read a branch lifecycle record.",
+        "tags": [
+          "branches"
+        ]
+      }
+    },
+    "/v1/operations/get_identity": {
+      "post": {
+        "operationId": "get_identity",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetIdentityInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "Read an identity in the authenticated tenant.",
+        "tags": [
+          "identities"
+        ]
+      }
+    },
+    "/v1/operations/get_reclamation": {
+      "post": {
+        "operationId": "get_reclamation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetReclamationInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "Read reclamation progress, overdue status, and conflict rescue refs.",
+        "tags": [
+          "repositories"
+        ]
+      }
+    },
+    "/v1/operations/get_repository": {
+      "post": {
+        "operationId": "get_repository",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetRepositoryInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "Read repository metadata and its stock-git URL.",
+        "tags": [
+          "repositories"
+        ]
+      }
+    },
+    "/v1/operations/list_branches": {
+      "post": {
+        "operationId": "list_branches",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListBranchesInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "List branch lifecycle records with pagination.",
+        "tags": [
+          "branches"
+        ]
+      }
+    },
+    "/v1/operations/list_repositories": {
+      "post": {
+        "operationId": "list_repositories",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListRepositoriesInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "List visible repositories with pagination.",
+        "tags": [
+          "repositories"
+        ]
+      }
+    },
+    "/v1/operations/list_tree": {
+      "post": {
+        "operationId": "list_tree",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListTreeInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "List byte-preserving tree entries with pagination.",
+        "tags": [
+          "content"
+        ]
+      }
+    },
+    "/v1/operations/mint_token": {
+      "post": {
+        "operationId": "mint_token",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MintTokenInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "Mint a short-lived token with no more privileges than the caller.",
+        "tags": [
+          "identities"
+        ]
+      }
+    },
+    "/v1/operations/promote_branch": {
+      "post": {
+        "operationId": "promote_branch",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromoteBranchInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "Make a live ephemeral branch permanent.",
+        "tags": [
+          "branches"
+        ]
+      }
+    },
+    "/v1/operations/read_file": {
+      "post": {
+        "operationId": "read_file",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadFileInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "Read exact file bytes at a revision without following symlinks.",
+        "tags": [
+          "content"
+        ]
+      }
+    },
+    "/v1/operations/request_compaction": {
+      "post": {
+        "operationId": "request_compaction",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestCompactionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "Request immediate storage reclamation for a repository.",
+        "tags": [
+          "repositories"
+        ]
+      }
+    },
+    "/v1/operations/revoke_token": {
+      "post": {
+        "operationId": "revoke_token",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeTokenInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "Revoke a token and every token descended from it.",
+        "tags": [
+          "identities"
+        ]
+      }
+    },
+    "/v1/operations/write_changeset": {
+      "post": {
+        "operationId": "write_changeset",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WriteChangesetInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResult"
+                }
+              }
+            },
+            "description": "The operation succeeded.",
+            "headers": {
+              "Idempotent-Replayed": {
+                "$ref": "#/components/headers/IdempotentReplayed"
+              },
+              "Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error410"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "summary": "Write file changes as one CAS-protected commit without a checkout.",
+        "tags": [
+          "content"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearer": []
+    }
+  ],
+  "servers": [
+    {
+      "description": "Local development listener",
+      "url": "http://127.0.0.1:8080"
+    }
+  ],
+  "x-cambium-error-codes": [
+    {
+      "code": "unauthenticated",
+      "details": "empty object",
+      "message": "Authentication is required",
+      "retryable": false,
+      "status": 401
+    },
+    {
+      "code": "permission_denied",
+      "details": "empty object",
+      "message": "The token lacks the required scope",
+      "retryable": false,
+      "status": 403
+    },
+    {
+      "code": "not_found",
+      "details": "empty object",
+      "message": "Resource not found",
+      "retryable": false,
+      "status": 404
+    },
+    {
+      "code": "invalid_request",
+      "details": "field, reason",
+      "message": "The request is invalid",
+      "retryable": false,
+      "status": 400
+    },
+    {
+      "code": "already_exists",
+      "details": "empty object",
+      "message": "The name is already in use",
+      "retryable": false,
+      "status": 409
+    },
+    {
+      "code": "ref_conflict",
+      "details": "ref, expected?, actual?",
+      "message": "The ref does not match the expected value",
+      "retryable": false,
+      "status": 409
+    },
+    {
+      "code": "branch_expired",
+      "details": "empty object",
+      "message": "The ephemeral branch has expired",
+      "retryable": false,
+      "status": 410
+    },
+    {
+      "code": "payload_too_large",
+      "details": "limit_bytes",
+      "message": "The request exceeds the size limit",
+      "retryable": false,
+      "status": 413
+    },
+    {
+      "code": "unsupported_path",
+      "details": "path or path_b64",
+      "message": "The backend cannot store this path",
+      "retryable": false,
+      "status": 422
+    },
+    {
+      "code": "idempotency_key_reused",
+      "details": "empty object",
+      "message": "The idempotency key was used for a different request",
+      "retryable": false,
+      "status": 422
+    },
+    {
+      "code": "idempotency_key_in_use",
+      "details": "empty object",
+      "message": "A request with this idempotency key is still running",
+      "retryable": true,
+      "status": 409
+    },
+    {
+      "code": "contention",
+      "details": "empty object",
+      "message": "Concurrent writers prevented the update",
+      "retryable": true,
+      "status": 409
+    },
+    {
+      "code": "repository_busy",
+      "details": "empty object",
+      "message": "The repository is temporarily fenced",
+      "retryable": true,
+      "status": 503
+    },
+    {
+      "code": "backend_unavailable",
+      "details": "empty object",
+      "message": "The storage backend did not answer",
+      "retryable": true,
+      "status": 503
+    },
+    {
+      "code": "internal",
+      "details": "empty object",
+      "message": "An internal error occurred; retry with the same idempotency key",
+      "retryable": true,
+      "status": 500
+    }
+  ],
+  "x-cambium-warning-codes": [
+    {
+      "code": "path_collision",
+      "details": "groups",
+      "message": "Some paths collide under case folding or Unicode normalization"
+    }
+  ]
+}

@@ -4,7 +4,7 @@ The current service exposes the same strict JSON requests through
 `POST /v1/operations/{name}` and MCP tools at `/mcp`. Send
 `Authorization: Bearer <token>` with every request. The authenticated token selects
 the tenant; no request accepts a tenant ID. Unknown request fields fail. See the
-[error registry](errors.md), [transport ADR](../adr/0012-api-transport-and-errors.md),
+[error registry](errors.md), [OpenAPI description](openapi.json), [transport ADR](../adr/0012-api-transport-and-errors.md),
 and [local setup](../local-development.md).
 
 Every mutation accepts an optional `idempotency_key` string of 1–255 printable

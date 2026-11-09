@@ -35,7 +35,30 @@ change: retry the same request with the same idempotency key.
 `path` string or the standard padded-base64 `path_b64` string. Other detail
 objects are empty in this version. Absent values are never serialized as `null`.
 
-Successful writes may include a `path_collision` warning. Its `details.paths`
-is an array of path pairs with exactly one member of each plain/base64 pair.
-It means the stored byte paths differ only by Unicode normalization or case
-and may collide on a client's filesystem. Cambium preserves both byte paths.
+## Warnings
+
+A successful response can carry `warnings`, a list of objects with `code`,
+`message`, and `details`. Warning codes follow the same stability rules as error
+codes, and clients ignore warning codes they do not know.
+
+| Warning | Details |
+| --- | --- |
+| `path_collision` | groups |
+
+`groups` is an array of path groups. Each group lists two or more stored paths
+that differ only by Unicode normalization or case and may therefore collide on a
+client's filesystem; each path is an object with exactly one of `path` or
+`path_b64`. Cambium preserves every byte path. Changeset responses also carry
+`path_collision_check_complete`; `false` means scanning was incomplete.
+
+## Machine-readable contract
+
+[`openapi.json`](openapi.json) is an OpenAPI 3.1 description of every
+`/v1/operations/{name}` request, generated from the same request schemas that
+MCP `tools/list` publishes. Its `ErrorResponse` schema gives the exact `details`
+shape for each code, and `x-cambium-error-codes` and `x-cambium-warning-codes`
+repeat these tables. A test fails when the published file differs from the
+code; regenerate it with
+`CAMBIUM_UPDATE_OPENAPI=1 cargo test -p cambium-server --lib openapi`.
+Success bodies are described in [operations](operations.md); they are not yet
+typed in the OpenAPI document.
