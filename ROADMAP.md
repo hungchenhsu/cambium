@@ -87,7 +87,7 @@ The smallest Cambium that shows the agent layer working over Enroute.
 - [x] Provenance fields on changes (agent, model, session ID) ([ADR-0018](docs/adr/0018-commit-provenance.md))
 - [ ] CLI as a thin client over the API, with `--json` output and a message catalog for human output (`en`)
 - [ ] Cross-tenant isolation tests extended to every endpoint, run in CI
-- [ ] Backend conformance test suite, run in CI
+- [x] Backend conformance test suite, run in CI ([suite](docs/development.md#backend-conformance-suite))
 - [ ] Tested procedure for moving repositories to another backend
 - [ ] Crash-recovery and durability tests, and a documented backup and restore procedure
 - [ ] Self-host packaging: release binaries and container images
