@@ -511,7 +511,7 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
     );
     let mut covered = denied_everywhere.clone();
     covered.extend(["list_repositories", "create_repository"]);
-    let tools: BTreeSet<_> = cambium_server::transport::tools()
+    let tool_names: BTreeSet<_> = cambium_server::transport::tools()
         .iter()
         .map(|tool| tool["name"].as_str().unwrap().to_owned())
         .collect();
@@ -520,7 +520,7 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
             .into_iter()
             .map(str::to_owned)
             .collect::<BTreeSet<_>>(),
-        tools,
+        tool_names,
         "every operation needs a cross-tenant case"
     );
     for (name, arguments) in [
