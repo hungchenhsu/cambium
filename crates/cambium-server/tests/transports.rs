@@ -325,6 +325,40 @@ async fn http_mcp_and_stock_git_share_live_authorization() {
             "string"
         );
     }
+    // These read-only replies have no per-request ID in their JSON bodies.
+    for (path, body) in [
+        ("/v1/operations/list_repositories", json!({})),
+        (
+            "/mcp",
+            json!({"jsonrpc":"2.0", "id":17, "method":"tools/list", "params":{}}),
+        ),
+    ] {
+        let mut baseline = None;
+        for language in ["en", "zh-TW", "ja-JP, en;q=0.5"] {
+            let response = api
+                .client
+                .post(format!("{}{path}", api.base))
+                .bearer_auth(token)
+                .header("accept-language", language)
+                .json(&body)
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), 200);
+            let bytes = response.bytes().await.unwrap();
+            let value: Value = serde_json::from_slice(&bytes).unwrap();
+            if path == "/mcp" {
+                assert_eq!(value["result"], tools["result"]);
+            } else {
+                assert_eq!(value["repositories"][0]["repository_id"], *repo);
+            }
+            if let Some(expected) = &baseline {
+                assert_eq!(&bytes, expected, "{path} {language}");
+            } else {
+                baseline = Some(bytes);
+            }
+        }
+    }
     let replay = api.rpc(token, "tools/call", json!({"name": "create_repository", "arguments": {"name": "project", "idempotency_key": "create-over-http"}})).await;
     assert_eq!(replay["result"]["structuredContent"], created);
     assert_eq!(replay["result"]["isError"], false);
