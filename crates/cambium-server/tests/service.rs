@@ -637,3 +637,6 @@ async fn a_large_tree_warning_limit_preserves_the_applied_commit_and_replay() {
     assert_eq!(file["revision"], response["commit_id"]);
     assert_eq!(file["contents"], "x");
 }
+
+#[path = "service/wire_fixtures.rs"]
+mod wire_fixtures;
