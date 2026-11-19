@@ -36,8 +36,10 @@ uses Cambium-authorized endpoints and a grant limited to the designated
 generations. Operators do not publish backend control listeners.
 
 1. **Prepare.** Check compatible object formats and supported ref types,
-   authorization wiring, capabilities and a verified backup of Cambium's
-   metadata and separately managed keys. Serialize migration with branch
+   authorization wiring and capabilities. Take a matched cold backup of Cambium's
+   metadata, deployment keys and the source backend, including its object and
+   node state. Restore it into an isolated deployment and verify the original
+   refs and data using the [restore procedure](../backup.md). Serialize migration with branch
    creation, deletion and compaction. Resolve pending ref-creation receipts
    on their original incarnation. Complete outstanding reconciliation and
    clean its temporary refs. Preserve live rescue refs. Keep the TTL/deletion
@@ -54,13 +56,20 @@ generations. Operators do not publish backend control listeners.
    source push changes the snapshot, retry. Reads may continue from the source.
 3. **Switch behind the gate.** After the initial comparison succeeds, atomically
    persist the destination mapping, source draining state and checkpoint.
-   Keep client writes gated. A quiet interval cannot prove a late source push
+   Gate new client reads and advertisements during the switch so a staged
+   destination cannot expose incomplete or expired refs. Keep writes gated.
+   A quiet interval cannot prove a late source push
    is finished. Seal **only the inactive source**, retry an unacknowledged seal
    and then enumerate its final stable snapshot. Persist pending copy/CAS
-   intent before each mutation. Apply late creates, changes and deletions to
-   the destination against their staged values. Stop on an unexpected
+   intent before each mutation. Match each managed ref to its saved branch ID
+   and deadline under the lifecycle gate. Exclude expired or superseded
+   owners from catch-up and from the expected final inventory. Remove a
+   staged expired tip only with its expected owner and value; preserve any
+   current owner. Apply eligible creates, changes and deletions against their
+   staged values. Stop on an unexpected
    destination value and retain both copies. Re-run the full comparison against
-   the sealed source before opening writes.
+   the eligible sealed-source inventory, recomputing reachability from those
+   refs and rechecking expiry before releasing the gate.
    [Seal contract](0013-sealed-generation-reclamation.md) ·
    [Generation lifecycle](0009-ephemeral-branch-reclamation.md)
 4. **Recover and retire.** Before the mapping switch, abort by discarding the
@@ -69,7 +78,7 @@ generations. Operators do not publish backend control listeners.
    and resume from the durable checkpoint. A sealed source cannot be reopened
    for writes. After new destination writes, a return move needs a new
    migration and a fresh incarnation. Drain existing readers and confirm the
-   backup, final verification and checkpoint before retiring the old storage.
+   matched backup restore evidence, final verification and checkpoint before retiring the old storage.
    Keep workers from sweeping either incarnation while the move is pending.
    Resume expiry/reclamation accounting from the durable metadata.
 
@@ -81,7 +90,9 @@ Require an empty destination and set its default branch during creation. Verify
 the source and destination adapter inventories again after the transfer. Use
 the adapter for an unborn HEAD, which an empty advertisement may omit. Keep the
 transfer identity authorized for the intended complete set. Hold the move if
-visibility policy hides a source ref.
+visibility policy hides a source ref. Require an authoritative guarantee that
+the source contains only direct refs plus symbolic HEAD; a Git server may omit
+symbolic-ref metadata from its advertisement.
 
 With `SRC_GIT` and `DST_GIT` set to these two Git endpoints, run in a new
 private working directory with no Git object alternates, shallow clones or
@@ -92,6 +103,8 @@ for an already-staged destination is the separate CAS step above.
 ```bash
 set -euo pipefail
 export LC_ALL=C GIT_NO_REPLACE_OBJECTS=1
+git ls-remote --symref "$SRC_GIT" > source.advertised
+awk -F '\t' '/^ref: / && $2 != "HEAD" {exit 1}' source.advertised
 git clone --mirror "$SRC_GIT" source.git
 git -C source.git for-each-ref --sort=refname \
   --format='%(refname) %(objectname)' > source.refs
