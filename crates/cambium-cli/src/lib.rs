@@ -91,7 +91,30 @@ where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    let catalog = Catalog::english();
+    let locale = ["LC_ALL", "LC_MESSAGES", "LANG"]
+        .into_iter()
+        .filter_map(std::env::var_os)
+        .find(|value| !value.is_empty());
+    run_with_locale(
+        args,
+        environment,
+        io,
+        locale.as_deref().and_then(|v| v.to_str()).unwrap_or("en"),
+    )
+    .await
+}
+
+/// Run with an explicit locale, for callers that supply their own environment.
+pub async fn run_with_locale<I, T>(
+    args: I,
+    environment: Environment,
+    io: Io<'_>,
+    locale: &str,
+) -> i32
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
     let cli = match Cli::try_parse_from(args) {
         Ok(cli) => cli,
         Err(error) => {
@@ -104,6 +127,7 @@ where
             return exit::SUCCESS;
         }
     };
+    let catalog = Catalog::new(if cli.json { "en" } else { locale });
     let url = cli
         .url
         .clone()
@@ -188,10 +212,7 @@ impl Client {
             let _ = writeln!(
                 io.stderr,
                 "{}",
-                self.catalog.format(
-                    "invalid-input",
-                    &[("reason", "operation names are lowercase snake_case")]
-                )
+                self.catalog.format("invalid-operation-name", &[])
             );
             return exit::USAGE;
         }
@@ -386,7 +407,7 @@ fn read_input(
             let mut text = String::new();
             stdin
                 .read_to_string(&mut text)
-                .map_err(|_| catalog.format("unreadable-input", &[("source", "standard input")]))?;
+                .map_err(|_| catalog.format("unreadable-stdin", &[]))?;
             text
         }
         Some(value) => match value.strip_prefix('@') {
@@ -398,7 +419,7 @@ fn read_input(
     let value: Value = serde_json::from_str(&text)
         .map_err(|error| catalog.format("invalid-input", &[("reason", &error.to_string())]))?;
     if !value.is_object() {
-        return Err(catalog.format("invalid-input", &[("reason", "expected an object")]));
+        return Err(catalog.format("expected-object", &[]));
     }
     Ok(value)
 }

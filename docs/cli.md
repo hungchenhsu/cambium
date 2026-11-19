@@ -26,5 +26,12 @@ Exit status: `0` success, `1` API error, `2` usage error, `3` the server could
 not be reached or did not answer with an API response. With `--json`, standard
 output contains only the response body, so scripts can branch on
 `error.code`. Without it, results are indented JSON, and errors, retry hints,
-and replay notices go to standard error as messages from the English catalog in
-[`locales/en/cli.ftl`](../crates/cambium-cli/locales/en/cli.ftl).
+and replay notices go to standard error as messages from the selected Fluent catalog.
+
+The CLI selects the first nonempty value of `LC_ALL`, `LC_MESSAGES`, and
+`LANG`. It removes any codeset or modifier suffix, treats underscores as
+hyphens, and matches the entire language tag without regard to ASCII case.
+For example, `zh_TW.UTF-8` selects [Traditional Chinese (Taiwan)](../crates/cambium-cli/locales/zh-TW/cli.ftl).
+An unset or unsupported locale selects [English](../crates/cambium-cli/locales/en/cli.ftl).
+With `--json`, diagnostics also use English. API values and operation
+descriptions come from the server. Clap supplies command help and syntax errors.

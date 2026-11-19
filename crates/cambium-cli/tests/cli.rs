@@ -2,7 +2,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use cambium_cli::{Environment, Io, exit, run};
+use cambium_cli::{Environment, Io, exit, run_with_locale};
 use serde_json::{Value, json};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -89,7 +89,7 @@ struct Outcome {
 async fn cli(args: &[&str], token: Option<&str>, stdin: &str) -> Outcome {
     let mut input = stdin.as_bytes();
     let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
-    let status = run(
+    let status = run_with_locale(
         std::iter::once("cambium-cli").chain(args.iter().copied()),
         Environment {
             token: token.map(str::to_owned),
@@ -100,6 +100,7 @@ async fn cli(args: &[&str], token: Option<&str>, stdin: &str) -> Outcome {
             stdout: &mut stdout,
             stderr: &mut stderr,
         },
+        "en",
     )
     .await;
     Outcome {
@@ -369,4 +370,107 @@ async fn operations_come_from_the_mcp_tool_list() {
         serde_json::from_str::<Value>(&seen[0].body).unwrap()["method"],
         "tools/list"
     );
+}
+
+fn process_output(args: &[&str], locales: [&str; 3], token: Option<&str>) -> std::process::Output {
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_cambium-cli"));
+    command
+        .args(args)
+        .env_remove("CAMBIUM_URL")
+        .env_remove("CAMBIUM_TOKEN");
+    for (name, value) in ["LC_ALL", "LC_MESSAGES", "LANG"].into_iter().zip(locales) {
+        command.env(name, value);
+    }
+    if let Some(token) = token {
+        command.env("CAMBIUM_TOKEN", token);
+    }
+    command.output().unwrap()
+}
+
+#[test]
+fn installed_binary_selects_the_first_nonempty_locale_for_human_messages() {
+    for (locale, expected) in [
+        (["", "", "zh_TW.UTF-8"], "缺少 token。"),
+        (["", "zh-TW", "en"], "缺少 token。"),
+        (["ZH_tw.UTF-8@variant", "C", "en"], "缺少 token。"),
+        (["C", "zh_TW", "zh-TW"], "No token."),
+        (["", "zh-CN", "zh-TW"], "No token."),
+        (["", "", ""], "No token."),
+    ] {
+        let result = process_output(&["call", "get_repository"], locale, None);
+        assert_eq!(result.status.code(), Some(exit::USAGE));
+        assert!(result.stdout.is_empty());
+        assert!(
+            String::from_utf8(result.stderr)
+                .unwrap()
+                .starts_with(expected),
+            "{locale:?}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn machine_streams_and_exit_status_are_byte_identical_across_locales() {
+    let (success, _) = server(
+        200,
+        "idempotent-replayed: true\r\n",
+        r#"{"name":"台灣", "id":1}"#.into(),
+    )
+    .await;
+    let (error, _) = server(404, "", json!({"error":{"code":"not_found","message":"Resource not found","request_id":REQUEST_ID}}).to_string()).await;
+    let (tools, _) = server(
+        200,
+        "",
+        json!({"result":{"tools":[{"name":"get_repository"}]}}).to_string(),
+    )
+    .await;
+    for (args, token, status) in [
+        (
+            vec!["--json", "--url", &success, "call", "get_repository"],
+            Some("test"),
+            exit::SUCCESS,
+        ),
+        (
+            vec!["--json", "--url", &error, "call", "get_repository"],
+            Some("test"),
+            exit::API_ERROR,
+        ),
+        (
+            vec!["--json", "--url", &tools, "operations"],
+            Some("test"),
+            exit::SUCCESS,
+        ),
+        (vec!["--json", "call", "get_repository"], None, exit::USAGE),
+        (vec!["--version"], None, exit::SUCCESS),
+    ] {
+        let english = process_output(&args, ["C", "", ""], token);
+        assert_eq!(english.status.code(), Some(status), "{args:?}");
+        for locale in [
+            ["zh_TW.UTF-8", "", ""],
+            ["", "zh-TW", "en"],
+            ["", "", "zh_TW"],
+            ["ja_JP", "C", "zh-TW"],
+        ] {
+            let result = process_output(&args, locale, token);
+            assert_eq!(result, english, "{locale:?} {args:?}");
+        }
+    }
+}
+
+#[test]
+fn traditional_chinese_identifies_the_invalid_argument() {
+    for (args, expected) in [
+        (vec!["call", "BAD"], "操作名稱必須使用小寫 snake_case。"),
+        (
+            vec!["call", "get_repository", "--input", "[]"],
+            "輸入資料必須是 JSON 物件。",
+        ),
+    ] {
+        let result = process_output(&args, ["zh_TW.UTF-8", "", ""], Some("test"));
+        assert_eq!(result.status.code(), Some(exit::USAGE));
+        assert_eq!(
+            String::from_utf8(result.stderr).unwrap().trim_end(),
+            expected
+        );
+    }
 }
