@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use cambium_backend::*;
 use cambium_backend_conformance::paths::PATH_CORPUS;
 use cambium_protocol::ObjectId;
-use cambium_server::objects::{GitObjects, collisions};
+use cambium_server::objects::{GitObjects, collisions, validate_path};
 
 struct Fixture {
     objects: HashMap<ObjectId, RawObject>,
@@ -254,5 +254,76 @@ async fn git_corpus_reads_exact_bytes_and_diff_preserves_mode_only_changes() {
     assert!(matches!(
         reads.root_tree(&first).await,
         Err(BackendError::Internal)
+    ));
+}
+
+#[tokio::test]
+async fn a_file_listed_at_the_tree_depth_limit_can_be_read() {
+    let content = b"deep file";
+    let mut child =
+        gix_object::compute_hash(gix_hash::Kind::Sha1, gix_object::Kind::Blob, content).unwrap();
+    let blob_id: ObjectId = child.to_string().parse().unwrap();
+    let mut objects = HashMap::from([(
+        blob_id.clone(),
+        RawObject {
+            kind: ObjectKind::Blob,
+            bytes: content.to_vec(),
+        },
+    )]);
+    let mut roots = Vec::new();
+    for directories in 0..=257 {
+        let mut bytes = if directories == 0 {
+            b"100644 leaf\0".to_vec()
+        } else {
+            b"40000 d\0".to_vec()
+        };
+        bytes.extend_from_slice(child.as_slice());
+        child =
+            gix_object::compute_hash(gix_hash::Kind::Sha1, gix_object::Kind::Tree, &bytes).unwrap();
+        let id: ObjectId = child.to_string().parse().unwrap();
+        objects.insert(
+            id.clone(),
+            RawObject {
+                kind: ObjectKind::Tree,
+                bytes,
+            },
+        );
+        roots.push(id);
+    }
+    let fixture = Fixture {
+        objects,
+        tip: roots[256].clone(),
+    };
+    let repository = "deep".to_owned().try_into().unwrap();
+    let reads = GitObjects {
+        backend: &fixture,
+        repository: &repository,
+    };
+    let listed = reads.tree(&roots[256], true).await.unwrap();
+    let leaf = listed.iter().find(|entry| !entry.is_tree()).unwrap();
+    assert_eq!(leaf.path, format!("{}leaf", "d/".repeat(256)).as_bytes());
+    let (entry, data) = reads.file(&roots[256], &leaf.path).await.unwrap();
+    assert_eq!(&entry, leaf);
+    assert_eq!(entry.object_id, blob_id);
+    assert_eq!(data, content);
+    assert!(matches!(
+        reads.tree(&roots[257], true).await,
+        Err(BackendError::InvalidRequest { .. })
+    ));
+    let too_deep = format!("{}leaf", "d/".repeat(257));
+    assert!(matches!(
+        reads.file(&roots[257], too_deep.as_bytes()).await,
+        Err(BackendError::InvalidRequest { .. })
+    ));
+}
+
+#[test]
+fn the_path_length_limit_counts_bytes_before_traversal() {
+    let mut path = "é".repeat(32_768).into_bytes();
+    validate_path(&path).unwrap();
+    path.push(b'x');
+    assert!(matches!(
+        validate_path(&path),
+        Err(BackendError::InvalidRequest { .. })
     ));
 }
