@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use cambium_backend::*;
 use cambium_backend_conformance::paths::PATH_CORPUS;
 use cambium_protocol::ObjectId;
-use cambium_server::objects::{GitObjects, collisions};
+use cambium_server::objects::{GitObjects, TreeEntry, collisions};
 
 struct Fixture {
     objects: HashMap<ObjectId, RawObject>,
@@ -255,4 +255,38 @@ async fn git_corpus_reads_exact_bytes_and_diff_preserves_mode_only_changes() {
         reads.root_tree(&first).await,
         Err(BackendError::Internal)
     ));
+}
+
+#[test]
+fn unicode_collision_warnings_preserve_the_original_path_bytes() {
+    let object_id: ObjectId = "1".repeat(40).parse().unwrap();
+    let paths: &[&[u8]] = &[
+        "Straße".as_bytes(),
+        b"STRASSE",
+        "Σ.txt".as_bytes(),
+        "ς.txt".as_bytes(),
+        "\u{1fc3}\u{0301}".as_bytes(),
+        "ήι".as_bytes(),
+        b"A",
+        "Ａ".as_bytes(),
+        b"bad\xff",
+        b"BAD\xff",
+    ];
+    let entries: Vec<_> = paths
+        .iter()
+        .map(|path| TreeEntry {
+            path: path.to_vec(),
+            mode: 0o100644,
+            object_id: object_id.clone(),
+        })
+        .collect();
+    let groups = collisions(&entries);
+    assert_eq!(
+        groups,
+        [
+            vec![paths[0], paths[1]],
+            vec![paths[4], paths[5]],
+            vec![paths[2], paths[3]]
+        ]
+    );
 }

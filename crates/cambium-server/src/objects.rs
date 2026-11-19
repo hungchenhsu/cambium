@@ -239,7 +239,17 @@ pub fn collisions(entries: &[TreeEntry]) -> Vec<Vec<Vec<u8>>> {
     let mut groups: BTreeMap<String, Vec<Vec<u8>>> = BTreeMap::new();
     for entry in entries {
         if let Ok(path) = std::str::from_utf8(&entry.path) {
-            let key = path.nfc().flat_map(char::to_lowercase).collect::<String>();
+            let key = if path.is_ascii() {
+                path.to_ascii_lowercase()
+            } else {
+                // Canonical caseless matching decomposes before full case folding.
+                // NFC yields an equivalent key and retains the existing group ordering.
+                let decomposed: String = path.nfd().collect();
+                unicase::UniCase::unicode(decomposed)
+                    .to_folded_case()
+                    .nfc()
+                    .collect()
+            };
             groups.entry(key).or_default().push(entry.path.clone());
         }
     }
