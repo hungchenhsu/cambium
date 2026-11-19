@@ -21,6 +21,7 @@ tokio.workspace = true
 unic-langid.workspace = true
 
 [dev-dependencies]
+fluent-syntax = "0.12"
 tempfile.workspace = true
 tokio = { workspace = true, features = ["io-util"] }
 

@@ -91,7 +91,30 @@ where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    let catalog = Catalog::english();
+    let locale = ["LC_ALL", "LC_MESSAGES", "LANG"]
+        .into_iter()
+        .filter_map(std::env::var_os)
+        .find(|value| !value.is_empty());
+    run_with_locale(
+        args,
+        environment,
+        io,
+        locale.as_deref().and_then(|v| v.to_str()).unwrap_or("en"),
+    )
+    .await
+}
+
+/// Run with an explicit locale, for callers that supply their own environment.
+pub async fn run_with_locale<I, T>(
+    args: I,
+    environment: Environment,
+    io: Io<'_>,
+    locale: &str,
+) -> i32
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
     let cli = match Cli::try_parse_from(args) {
         Ok(cli) => cli,
         Err(error) => {
@@ -104,6 +127,7 @@ where
             return exit::SUCCESS;
         }
     };
+    let catalog = Catalog::new(if cli.json { "en" } else { locale });
     let url = cli
         .url
         .clone()
