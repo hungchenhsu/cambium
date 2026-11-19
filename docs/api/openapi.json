@@ -593,26 +593,14 @@
       "DiffEntry": {
         "oneOf": [
           {
-            "properties": {
-              "path": {
-                "type": "string"
-              }
-            },
             "required": [
               "path"
-            ],
-            "type": "object"
+            ]
           },
           {
-            "properties": {
-              "path_b64": {
-                "type": "string"
-              }
-            },
             "required": [
               "path_b64"
-            ],
-            "type": "object"
+            ]
           }
         ],
         "properties": {
@@ -621,6 +609,13 @@
           },
           "old": {
             "$ref": "#/components/schemas/Entry"
+          },
+          "path": {
+            "type": "string"
+          },
+          "path_b64": {
+            "contentEncoding": "base64",
+            "type": "string"
           }
         },
         "type": "object"
@@ -730,26 +725,14 @@
       "Entry": {
         "oneOf": [
           {
-            "properties": {
-              "path": {
-                "type": "string"
-              }
-            },
             "required": [
               "path"
-            ],
-            "type": "object"
+            ]
           },
           {
-            "properties": {
-              "path_b64": {
-                "type": "string"
-              }
-            },
             "required": [
               "path_b64"
-            ],
-            "type": "object"
+            ]
           }
         ],
         "properties": {
@@ -758,6 +741,13 @@
           },
           "object_id": {
             "$ref": "#/components/schemas/ObjectId"
+          },
+          "path": {
+            "type": "string"
+          },
+          "path_b64": {
+            "contentEncoding": "base64",
+            "type": "string"
           }
         },
         "required": [
@@ -2186,62 +2176,52 @@
           {
             "oneOf": [
               {
-                "properties": {
-                  "path": {
-                    "type": "string"
-                  }
-                },
                 "required": [
                   "path"
-                ],
-                "type": "object"
+                ]
               },
               {
-                "properties": {
-                  "path_b64": {
-                    "type": "string"
-                  }
-                },
                 "required": [
                   "path_b64"
-                ],
-                "type": "object"
+                ]
               }
             ]
           },
           {
             "oneOf": [
               {
-                "properties": {
-                  "contents": {
-                    "type": "string"
-                  }
-                },
                 "required": [
                   "contents"
-                ],
-                "type": "object"
+                ]
               },
               {
-                "properties": {
-                  "contents_b64": {
-                    "type": "string"
-                  }
-                },
                 "required": [
                   "contents_b64"
-                ],
-                "type": "object"
+                ]
               }
             ]
           }
         ],
         "properties": {
+          "contents": {
+            "type": "string"
+          },
+          "contents_b64": {
+            "contentEncoding": "base64",
+            "type": "string"
+          },
           "mode": {
             "type": "string"
           },
           "object_id": {
             "$ref": "#/components/schemas/ObjectId"
+          },
+          "path": {
+            "type": "string"
+          },
+          "path_b64": {
+            "contentEncoding": "base64",
+            "type": "string"
           },
           "revision": {
             "$ref": "#/components/schemas/ObjectId"

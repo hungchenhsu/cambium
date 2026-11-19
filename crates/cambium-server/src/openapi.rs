@@ -374,6 +374,25 @@ mod tests {
     }
 
     #[test]
+    fn file_schema_types_both_names_of_each_exclusive_pair() {
+        let document = document();
+        let schema = &document["components"]["schemas"]["ReadFileResponse"];
+        for key in ["path", "path_b64", "contents", "contents_b64"] {
+            assert_eq!(schema["properties"][key]["type"], "string", "{key}");
+        }
+        for pair in [["path", "path_b64"], ["contents", "contents_b64"]] {
+            assert!(
+                schema["allOf"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|alternative| alternative["oneOf"]
+                        == json!([{"required": [pair[0]]}, {"required": [pair[1]]}]))
+            );
+        }
+    }
+
+    #[test]
     fn published_document_matches_the_code() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/api/openapi.json");
         let rendered = render();

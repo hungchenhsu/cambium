@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[schemars(transform = |schema: &mut schemars::Schema| byte_pair(schema, "path", "path_b64"))]
 pub(crate) enum Path {
     Path(String),
     PathB64(String),
@@ -16,9 +17,25 @@ pub(crate) enum Path {
 
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[schemars(transform = |schema: &mut schemars::Schema| byte_pair(schema, "contents", "contents_b64"))]
 pub(crate) enum Contents {
     Contents(String),
     ContentsB64(String),
+}
+
+/// Check exclusivity by key presence, even if the other key has an invalid value.
+fn byte_pair(schema: &mut schemars::Schema, plain: &str, encoded: &str) {
+    schema.insert("type".into(), json!("object"));
+    schema.insert(
+        "properties".into(),
+        json!({
+            (plain): {"type": "string"}, (encoded): {"type": "string", "contentEncoding": "base64"}
+        }),
+    );
+    schema.insert(
+        "oneOf".into(),
+        json!([{"required": [plain]}, {"required": [encoded]}]),
+    );
 }
 
 fn warning_items(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
