@@ -1,5 +1,6 @@
 //! The single authorization and operation path used by HTTP and MCP.
 
+use crate::responses as body;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex, Weak},
@@ -11,8 +12,7 @@ use cambium_backend::{
 };
 use cambium_protocol::{
     ApiError, ErrorCode, ObjectId, Principal, RepositoryId, RequestId, Scope, TenantId, Warning,
-    WarningCode,
-    bytes::{decode_pair, encode_pair},
+    WarningCode, bytes::decode_pair,
 };
 use cambium_store::{
     IdentityRecord, RepositoryRecord, StoreError, TokenHash,
@@ -539,7 +539,7 @@ impl App {
                     )
                     .await
                     .map_err(store_error)?;
-                self.repository_json(
+                self.repository_body(
                     &self
                         .store
                         .get_repository(&principal.tenant_id, &record.id)
@@ -547,12 +547,15 @@ impl App {
                         .map_err(store_error)?,
                 )
                 .await
+                .map(|body| json!(body))
             }
             Operation::GetRepository(input) => {
                 let repository = self
                     .authorized_repository(&principal, &input.repository_id, Scope::RepoRead)
                     .await?;
-                self.repository_json(&repository).await
+                self.repository_body(&repository)
+                    .await
+                    .map(|body| json!(body))
             }
             Operation::ListRepositories(input) => self.list_repositories(&principal, input).await,
             Operation::DeleteRepository(input) => {
@@ -562,7 +565,10 @@ impl App {
                     .await
                     .map_err(store_error)?;
                 if current.state == "deleted" {
-                    return Ok(json!({"deleted": true, "repository_id": input.repository_id}));
+                    return Ok(json!(body::DeletedRepository {
+                        deleted: true,
+                        repository_id: input.repository_id.clone()
+                    }));
                 }
                 self.store
                     .begin_repository_deletion(
@@ -574,7 +580,10 @@ impl App {
                     .map_err(store_error)?;
                 self.delete_generations(&principal.tenant_id, &input.repository_id)
                     .await?;
-                Ok(json!({"deleted": true, "repository_id": input.repository_id}))
+                Ok(json!(body::DeletedRepository {
+                    deleted: true,
+                    repository_id: input.repository_id.clone()
+                }))
             }
             Operation::RequestCompaction(input) => {
                 let repository = self
@@ -629,10 +638,11 @@ impl App {
                     .file(&revision, &path)
                     .await
                     .map_err(backend_error)?;
-                let mut result = entry_json(&entry);
-                result["revision"] = json!(revision);
-                add_bytes(&mut result, "contents", &contents, input.always_base64);
-                Ok(result)
+                Ok(json!(body::FileBody {
+                    entry: entry_body(&entry),
+                    revision,
+                    contents: body::Contents::encode(&contents, input.always_base64),
+                }))
             }
             Operation::GetCommitProvenance(input) => {
                 let repository = self
@@ -678,25 +688,35 @@ impl App {
                     .mint_token(&principal, &request, self.clock.now_ms())
                     .await
                     .map_err(store_error)?;
-                let mut response = json!({"token_id": minted.token_id, "identity_id": minted.actor.identity_id, "kind": minted.actor.kind, "scope": minted.scope, "expires_at": timestamp(minted.expires_at_ms)?, "token": secret});
-                if let Some(repositories) = minted.repositories {
-                    response["repositories"] = json!(repositories);
-                }
-                Ok(response)
+                Ok(json!(body::TokenBody {
+                    token_id: minted.token_id,
+                    identity_id: minted.actor.identity_id,
+                    kind: minted.actor.kind,
+                    scope: minted.scope,
+                    expires_at: timestamp(minted.expires_at_ms)?,
+                    token: secret,
+                    repositories: minted.repositories,
+                }))
             }
             Operation::RevokeToken(input) => {
                 self.store
                     .revoke_token(&principal, &input.token_id, self.clock.now_ms())
                     .await
                     .map_err(store_error)?;
-                Ok(json!({"revoked": true, "token_id": input.token_id}))
+                Ok(json!(body::RevokedToken {
+                    revoked: true,
+                    token_id: input.token_id.clone()
+                }))
             }
             Operation::DisableIdentity(input) => {
                 self.store
                     .disable_identity(&principal, &input.identity_id, self.clock.now_ms())
                     .await
                     .map_err(store_error)?;
-                Ok(json!({"disabled": true, "identity_id": input.identity_id}))
+                Ok(json!(body::DisabledIdentity {
+                    disabled: true,
+                    identity_id: input.identity_id.clone()
+                }))
             }
         }
     }
@@ -737,15 +757,24 @@ impl App {
         Ok(repository)
     }
 
-    async fn repository_json(&self, record: &RepositoryRecord) -> Result<Value, ApiError> {
+    async fn repository_body(
+        &self,
+        record: &RepositoryRecord,
+    ) -> Result<body::RepositoryBody, ApiError> {
         let slug = self
             .store
             .tenant_slug(&record.tenant_id)
             .await
             .map_err(store_error)?;
-        Ok(
-            json!({"repository_id": record.id, "name": record.name, "default_branch": record.default_branch, "state": record.state, "created_at": timestamp(record.created_at_ms)?, "created_by": record.created_by, "git_url": format!("{}/{}/{}.git", self.git_base_url, slug, record.name)}),
-        )
+        Ok(body::RepositoryBody {
+            repository_id: record.id.clone(),
+            name: record.name.clone(),
+            default_branch: record.default_branch.clone(),
+            state: record.state.clone(),
+            created_at: timestamp(record.created_at_ms)?,
+            created_by: record.created_by.clone(),
+            git_url: format!("{}/{}/{}.git", self.git_base_url, slug, record.name),
+        })
     }
 
     async fn list_repositories(
@@ -772,7 +801,7 @@ impl App {
             for row in &rows {
                 after = Some(row.id.clone());
                 if principal.can_see(&row.id) {
-                    items.push(self.repository_json(row).await?);
+                    items.push(self.repository_body(row).await?);
                     if items.len() > input.limit as usize {
                         break;
                     }
@@ -784,15 +813,18 @@ impl App {
         }
         let truncated = items.len() > input.limit as usize;
         items.truncate(input.limit as usize);
-        let mut result = json!({"repositories": items, "truncated": truncated});
-        if truncated {
-            let last = result["repositories"]
-                .as_array()
-                .and_then(|v| v.last())
-                .ok_or_else(internal)?;
-            result["next_page_token"] = json!(encode_cursor(&last["repository_id"])?);
-        }
-        Ok(result)
+        let next_page_token = if truncated {
+            Some(encode_cursor(
+                &items.last().ok_or_else(internal)?.repository_id,
+            )?)
+        } else {
+            None
+        };
+        Ok(json!(body::RepositoryList {
+            repositories: items,
+            truncated,
+            next_page_token
+        }))
     }
 
     async fn write_changeset(
@@ -912,19 +944,20 @@ impl App {
             )
             .await
             .unwrap_or(false);
-        let mut response = json!({"commit_id": result.commit_id, "tree_id": result.tree_id, "provenance_recorded": recorded});
-        if let Some(parent) = result.parent_commit_id {
-            response["parent_commit_id"] = json!(parent);
-        }
         // Warning derivation must not turn an applied commit into a cached failure.
-        match objects.tree(&result.commit_id, true).await {
-            Ok(entries) => {
-                response["path_collision_check_complete"] = json!(true);
-                add_collision_warnings(&mut response, &entries);
-            }
-            Err(_) => response["path_collision_check_complete"] = json!(false),
-        }
-        Ok(response)
+        let (path_collision_check_complete, warnings) =
+            match objects.tree(&result.commit_id, true).await {
+                Ok(entries) => (true, collision_warnings(&entries)),
+                Err(_) => (false, Vec::new()),
+            };
+        Ok(json!(body::ChangesetBody {
+            commit_id: result.commit_id,
+            tree_id: result.tree_id,
+            provenance_recorded: recorded,
+            parent_commit_id: result.parent_commit_id,
+            path_collision_check_complete,
+            warnings
+        }))
     }
 
     async fn list_tree(
@@ -967,8 +1000,8 @@ impl App {
             .tree(&revision, input.recursive)
             .await
             .map_err(backend_error)?;
-        let mut result = page(
-            entries.iter().map(entry_json).collect(),
+        let (items, next_page_token) = page(
+            entries.iter().map(entry_body).collect(),
             offset,
             input.limit,
             TreeCursor {
@@ -978,9 +1011,13 @@ impl App {
                 offset,
             },
         )?;
-        result["revision"] = json!(revision);
-        add_collision_warnings(&mut result, &entries);
-        Ok(result)
+        Ok(json!(body::TreeBody {
+            entries: items,
+            revision,
+            truncated: next_page_token.is_some(),
+            next_page_token,
+            warnings: collision_warnings(&entries)
+        }))
     }
 
     async fn diff(&self, principal: &Principal, input: &requests::Diff) -> Result<Value, ApiError> {
@@ -1023,19 +1060,13 @@ impl App {
         let differences = objects.diff(&from, &to).await.map_err(backend_error)?;
         let values = differences
             .iter()
-            .map(|item| {
-                let mut value = json!({});
-                add_bytes(&mut value, "path", &item.path, false);
-                if let Some(old) = &item.old {
-                    value["old"] = entry_json(old);
-                }
-                if let Some(new) = &item.new {
-                    value["new"] = entry_json(new);
-                }
-                value
+            .map(|item| body::DiffEntry {
+                path: body::Path::encode(&item.path),
+                old: item.old.as_ref().map(entry_body),
+                new: item.new.as_ref().map(entry_body),
             })
             .collect();
-        let mut result = page(
+        let (entries, next_page_token) = page(
             values,
             offset,
             input.limit,
@@ -1046,9 +1077,13 @@ impl App {
                 offset,
             },
         )?;
-        result["from"] = json!(from);
-        result["to"] = json!(to);
-        Ok(result)
+        Ok(json!(body::DiffBody {
+            entries,
+            from,
+            to,
+            truncated: next_page_token.is_some(),
+            next_page_token
+        }))
     }
 }
 
@@ -1071,12 +1106,12 @@ impl TreeCursor {
         Ok(())
     }
 }
-fn page(
-    values: Vec<Value>,
+fn page<T>(
+    values: Vec<T>,
     offset: usize,
     limit: u32,
     mut cursor: TreeCursor,
-) -> Result<Value, ApiError> {
+) -> Result<(Vec<T>, Option<String>), ApiError> {
     if offset > values.len() {
         return Err(ApiError::invalid(
             "page_token",
@@ -1085,12 +1120,16 @@ fn page(
     }
     let end = (offset + limit as usize).min(values.len());
     let truncated = end < values.len();
-    let mut result = json!({"entries": &values[offset..end], "truncated": truncated});
-    if truncated {
+    let next_page_token = if truncated {
         cursor.offset = end;
-        result["next_page_token"] = json!(encode_cursor(&cursor)?);
-    }
-    Ok(result)
+        Some(encode_cursor(&cursor)?)
+    } else {
+        None
+    };
+    Ok((
+        values.into_iter().skip(offset).take(end - offset).collect(),
+        next_page_token,
+    ))
 }
 pub(crate) fn encode_cursor<T: Serialize>(value: &T) -> Result<String, ApiError> {
     Ok(URL_SAFE_NO_PAD.encode(serde_json::to_vec(value).map_err(|_| internal())?))
@@ -1213,26 +1252,26 @@ fn provenance_claims(input: Option<&requests::Provenance>) -> Result<ProvenanceC
     })
 }
 fn provenance_json(record: &ProvenanceRecord) -> Result<Value, ApiError> {
-    let mut claims = json!({});
-    if let Some(model) = &record.claims.model {
-        claims["model"] = json!(model);
-    }
-    if let Some(session) = &record.claims.session_id {
-        claims["session_id"] = json!(session);
-    }
-    Ok(
-        json!({"commit_id": record.commit_id, "recorded_at": timestamp(record.recorded_at_ms)?, "recorded_by": record.recorded_by, "claims": claims}),
-    )
+    Ok(json!(body::ProvenanceBody {
+        commit_id: record.commit_id.clone(),
+        recorded_at: timestamp(record.recorded_at_ms)?,
+        recorded_by: record.recorded_by.clone(),
+        claims: body::Claims {
+            model: record.claims.model.clone(),
+            session_id: record.claims.session_id.clone()
+        }
+    }))
 }
 fn identity_json(record: &IdentityRecord) -> Result<Value, ApiError> {
-    let mut result = json!({"identity_id": record.id, "kind": record.kind, "name": record.name, "created_at": timestamp(record.created_at_ms)?, "created_by": record.created_by});
-    if let Some(owner) = &record.owner_id {
-        result["owner_id"] = json!(owner);
-    }
-    if let Some(disabled) = record.disabled_at_ms {
-        result["disabled_at"] = json!(timestamp(disabled)?);
-    }
-    Ok(result)
+    Ok(json!(body::IdentityBody {
+        identity_id: record.id.clone(),
+        kind: record.kind,
+        name: record.name.clone(),
+        created_at: timestamp(record.created_at_ms)?,
+        created_by: record.created_by.clone(),
+        owner_id: record.owner_id.clone(),
+        disabled_at: record.disabled_at_ms.map(timestamp).transpose()?
+    }))
 }
 pub fn timestamp(milliseconds: i64) -> Result<String, ApiError> {
     OffsetDateTime::from_unix_timestamp_nanos(i128::from(milliseconds) * 1_000_000)
@@ -1240,40 +1279,31 @@ pub fn timestamp(milliseconds: i64) -> Result<String, ApiError> {
         .format(&Rfc3339)
         .map_err(|_| internal())
 }
-fn entry_json(entry: &TreeEntry) -> Value {
-    let mut value = json!({"object_id": entry.object_id, "mode": format!("{:06o}", entry.mode)});
-    add_bytes(&mut value, "path", &entry.path, false);
-    value
-}
-fn add_bytes(value: &mut Value, name: &str, bytes: &[u8], always_base64: bool) {
-    let (plain, encoded) = encode_pair(bytes, always_base64);
-    if let Some(plain) = plain {
-        value[name] = json!(plain);
-    }
-    if let Some(encoded) = encoded {
-        value[format!("{name}_b64")] = json!(encoded);
+fn entry_body(entry: &TreeEntry) -> body::Entry {
+    body::Entry {
+        object_id: entry.object_id.clone(),
+        mode: format!("{:06o}", entry.mode),
+        path: body::Path::encode(&entry.path),
     }
 }
-fn add_collision_warnings(value: &mut Value, entries: &[TreeEntry]) {
+
+fn collision_warnings(entries: &[TreeEntry]) -> Vec<Warning> {
     let groups = collisions(entries);
-    if !groups.is_empty() {
-        let paths: Vec<Vec<Value>> = groups
-            .into_iter()
-            .map(|paths| {
-                paths
-                    .into_iter()
-                    .map(|path| {
-                        let mut value = json!({});
-                        add_bytes(&mut value, "path", &path, false);
-                        value
-                    })
-                    .collect()
-            })
-            .collect();
-        let mut details = serde_json::Map::new();
-        details.insert("groups".into(), json!(paths));
-        value["warnings"] = json!([Warning::new(WarningCode::PathCollision, details)]);
+    if groups.is_empty() {
+        return Vec::new();
     }
+    let paths: Vec<Vec<_>> = groups
+        .into_iter()
+        .map(|paths| {
+            paths
+                .into_iter()
+                .map(|path| body::Path::encode(&path))
+                .collect()
+        })
+        .collect();
+    let mut details = serde_json::Map::new();
+    details.insert("groups".into(), json!(paths));
+    vec![Warning::new(WarningCode::PathCollision, details)]
 }
 pub fn store_error(error: StoreError) -> ApiError {
     match error {

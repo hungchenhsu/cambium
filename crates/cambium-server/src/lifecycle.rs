@@ -1,5 +1,6 @@
 //! Recoverable ephemeral ref ownership and expiry, serialized per repository.
 
+use crate::responses as body;
 use cambium_backend::{ObjectKind, RefExpectation, RefUpdate};
 use cambium_protocol::{ApiError, BranchId, ErrorCode, ObjectId, Principal};
 use cambium_store::{
@@ -136,18 +137,23 @@ impl App {
                     .map_err(store_error)?;
                 let truncated = records.len() > input.limit as usize;
                 records.truncate(input.limit as usize);
-                let values = records
+                let branches = records
                     .iter()
-                    .map(|record| self.branch_json(record))
+                    .map(|record| self.branch_body(record))
                     .collect::<Result<Vec<_>, _>>()?;
-                let mut response = json!({"branches": values, "truncated": truncated});
-                if truncated {
-                    response["next_page_token"] = json!(encode_cursor(&(
+                let next_page_token = if truncated {
+                    Some(encode_cursor(&(
                         binding,
-                        &records.last().ok_or_else(internal)?.id
-                    ))?);
-                }
-                Ok(response)
+                        &records.last().ok_or_else(internal)?.id,
+                    ))?)
+                } else {
+                    None
+                };
+                Ok(json!(body::BranchList {
+                    branches,
+                    truncated,
+                    next_page_token
+                }))
             }
             Operation::ExtendBranch(input) => {
                 let reservation = reservation.ok_or_else(internal)?;
@@ -190,20 +196,28 @@ impl App {
         }
     }
 
-    pub(crate) fn branch_json(&self, record: &BranchRecord) -> Result<Value, ApiError> {
+    fn branch_json(&self, record: &BranchRecord) -> Result<Value, ApiError> {
+        Ok(json!(self.branch_body(record)?))
+    }
+
+    fn branch_body(&self, record: &BranchRecord) -> Result<body::BranchBody, ApiError> {
         let state = if record.state == "active" && record.expires_at_ms <= self.clock.now_ms() {
             "expiring"
         } else {
             &record.state
         };
-        let mut value = json!({"branch_id": record.id, "repository_id": record.repository_id, "name": record.name, "state": state, "created_at": timestamp(record.created_at_ms)?, "created_by": record.created_by});
-        if record.state != "promoted" {
-            value["expires_at"] = json!(timestamp(record.expires_at_ms)?);
-        }
-        if let Some(last) = record.last_activity_at_ms {
-            value["last_activity_at"] = json!(timestamp(last)?);
-        }
-        Ok(value)
+        Ok(body::BranchBody {
+            branch_id: record.id.clone(),
+            repository_id: record.repository_id.clone(),
+            name: record.name.clone(),
+            state: state.into(),
+            created_at: timestamp(record.created_at_ms)?,
+            created_by: record.created_by.clone(),
+            expires_at: (record.state != "promoted")
+                .then(|| timestamp(record.expires_at_ms))
+                .transpose()?,
+            last_activity_at: record.last_activity_at_ms.map(timestamp).transpose()?,
+        })
     }
 
     async fn resolve_creation(&self, record: &BranchRecord) -> Result<bool, ApiError> {

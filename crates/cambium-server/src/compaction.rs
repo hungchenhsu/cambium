@@ -1,5 +1,6 @@
 //! Generation compaction. Only a confirmed seal and final reconcile permit deletion.
 
+use crate::responses as body;
 use cambium_backend::{
     BackendError, BackendRepositoryId, ObjectKind, RefCopy, RefExpectation, RefSnapshot, RefUpdate,
 };
@@ -108,53 +109,64 @@ impl App {
             )
             .await
             .map_err(store_error)?;
-        self.compaction_json(&record, 0, 100)
+        Ok(json!(self.compaction_body(&record, 0, 100)?))
     }
 
-    fn compaction_json(
+    fn compaction_body(
         &self,
         record: &CompactionRecord,
         offset: usize,
         limit: usize,
-    ) -> Result<Value, ApiError> {
-        let mut value = json!({"compaction_id": record.id, "repository_id": record.repository_id, "stage": record.stage, "created_at": timestamp(record.created_at_ms)?, "updated_at": timestamp(record.updated_at_ms)?, "old_generation": record.old_generation, "new_generation": record.new_generation});
-        if let Some(completed) = record.completed_at_ms {
-            value["completed_at"] = json!(timestamp(completed)?);
-        }
+    ) -> Result<body::CompactionBody, ApiError> {
         let conflicts = record.state["conflicts"]
             .as_array()
             .cloned()
             .unwrap_or_default();
-        value["conflict_count"] = json!(conflicts.len());
-        if offset > conflicts.len() {
+        let conflict_count = conflicts.len();
+        if offset > conflict_count {
             return Err(ApiError::invalid(
                 "page_token",
                 "Cursor exceeds the conflict list",
             ));
         }
-        value["conflicts"] = json!(
-            conflicts
-                .iter()
-                .skip(offset)
-                .take(limit)
-                .collect::<Vec<_>>()
-        );
         let next = offset.saturating_add(limit);
-        value["conflicts_truncated"] = json!(conflicts.len() > next);
-        if conflicts.len() > next {
-            value["next_page_token"] = json!(encode_cursor(&(
+        let next_page_token = if conflict_count > next {
+            Some(encode_cursor(&(
                 &record.tenant_id,
                 &record.repository_id,
                 &record.id,
-                next
-            ))?);
-        }
-        if record.completed_at_ms.is_none()
-            && let Some(error) = record.state.get("last_error")
-        {
-            value["last_error"] = error.clone();
-        }
-        Ok(value)
+                next,
+            ))?)
+        } else {
+            None
+        };
+        let conflicts = conflicts
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .map(serde_json::from_value)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| internal())?;
+        Ok(body::CompactionBody {
+            compaction_id: record.id.clone(),
+            repository_id: record.repository_id.clone(),
+            stage: record.stage.clone(),
+            created_at: timestamp(record.created_at_ms)?,
+            updated_at: timestamp(record.updated_at_ms)?,
+            old_generation: record.old_generation,
+            new_generation: record.new_generation,
+            completed_at: record.completed_at_ms.map(timestamp).transpose()?,
+            conflict_count,
+            conflicts,
+            conflicts_truncated: conflict_count > next,
+            next_page_token,
+            last_error: record
+                .state
+                .get("last_error")
+                .and_then(Value::as_str)
+                .filter(|_| record.completed_at_ms.is_none())
+                .map(str::to_owned),
+        })
     }
 
     pub(crate) async fn reclamation_json(
@@ -200,14 +212,25 @@ impl App {
                 .await
                 .map_err(store_error)?
         };
-        let mut value = json!({"repository_id": repository.id, "active_generation": repository.active_generation, "fenced": repository.fenced, "unreclaimed_expiries": summary.count, "overdue": summary.oldest_at_ms.is_some_and(|oldest| self.clock.now_ms().saturating_sub(oldest) >= self.compaction.max_delay_ms.saturating_add(self.compaction.drain_ms))});
-        if let Some(oldest) = summary.oldest_at_ms {
-            value["oldest_expiry_at"] = json!(timestamp(oldest)?);
-        }
-        if let Some(record) = latest {
-            value["compaction"] = self.compaction_json(&record, offset, input.limit as usize)?;
-        }
-        Ok(value)
+        Ok(json!(body::ReclamationBody {
+            repository_id: repository.id.clone(),
+            active_generation: repository.active_generation,
+            fenced: repository.fenced,
+            unreclaimed_expiries: summary.count,
+            overdue: summary.oldest_at_ms.is_some_and(|oldest| self
+                .clock
+                .now_ms()
+                .saturating_sub(oldest)
+                >= self
+                    .compaction
+                    .max_delay_ms
+                    .saturating_add(self.compaction.drain_ms)),
+            oldest_expiry_at: summary.oldest_at_ms.map(timestamp).transpose()?,
+            compaction: latest
+                .as_ref()
+                .map(|record| self.compaction_body(record, offset, input.limit as usize))
+                .transpose()?
+        }))
     }
 
     /// Caller owns the lifecycle lock, but ordinary API writes remain possible in Prepare.
