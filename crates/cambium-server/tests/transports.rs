@@ -907,14 +907,14 @@ impl Drop for Process {
     }
 }
 
-async fn start_binary(path: &Path, api: &Api) -> Process {
+async fn start_binary(path: &Path, api: &Api, stderr: std::process::Stdio) -> Process {
     let mut process = Process(
         Command::new(env!("CARGO_BIN_EXE_cambium"))
             .arg("--data-dir")
             .arg(path)
             .arg("serve")
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::inherit())
+            .stderr(stderr)
             .spawn()
             .unwrap(),
     );
@@ -986,7 +986,8 @@ async fn binary_uses_private_files_and_preserves_encrypted_replay_across_restart
     let token = user["token"].as_str().unwrap();
     drop(public_socket);
     drop(hook_socket);
-    let process = start_binary(&path, &api).await;
+    let diagnostics = tempfile::NamedTempFile::new_in(directory.path()).unwrap();
+    let process = start_binary(&path, &api, diagnostics.reopen().unwrap().into()).await;
     let second = Command::new(env!("CARGO_BIN_EXE_cambium"))
         .arg("--data-dir")
         .arg(&path)
@@ -1006,10 +1007,11 @@ async fn binary_uses_private_files_and_preserves_encrypted_replay_across_restart
     let repository = &created["repository_id"];
     let minted = api.success(token, "mint_token", json!({"identity_id": user["identity_id"], "scope": "repo:read", "ttl_seconds": 1800, "idempotency_key": "credential"})).await;
     let write = api.success(token, "write_changeset", json!({"repository_id": repository, "message": "persistent", "changes": [{"action": "put", "path": "data", "contents": "persisted"}], "idempotency_key": "write"})).await;
+    check_provenance_log(&api, token, repository, &path, diagnostics.path()).await;
     let url = format!("{}binary/restart.git", backend.git);
     git(directory.path(), Some(token), &["ls-remote", &url], true);
     drop(process);
-    let _process = start_binary(&path, &api).await;
+    let _process = start_binary(&path, &api, std::process::Stdio::inherit()).await;
     let replay = api.operation(token, "mint_token", json!({"identity_id": user["identity_id"], "scope": "repo:read", "ttl_seconds": 1800, "idempotency_key": "credential"})).await;
     assert_eq!(replay.headers()["idempotent-replayed"], "true");
     assert_eq!(replay.json::<Value>().await.unwrap(), minted);
@@ -1046,4 +1048,56 @@ async fn binary_uses_private_files_and_preserves_encrypted_replay_across_restart
         401
     );
     git(directory.path(), Some(token), &["ls-remote", &url], false);
+}
+
+/// Force the write after the commit to fail, then check what a server operator sees.
+async fn check_provenance_log(
+    api: &Api,
+    token: &str,
+    repository: &Value,
+    data: &Path,
+    diagnostics: &Path,
+) {
+    use sqlx::Connection as _;
+    let mut connection = sqlx::SqliteConnection::connect_with(
+        &sqlx::sqlite::SqliteConnectOptions::new().filename(data.join("metadata.sqlite")),
+    )
+    .await
+    .unwrap();
+    sqlx::query("CREATE TRIGGER fail_provenance BEFORE INSERT ON commit_provenance BEGIN SELECT RAISE(ABORT, 'private-store-detail'); END")
+        .execute(&mut connection).await.unwrap();
+    let reply = api.operation(token, "write_changeset", json!({
+        "repository_id":repository,"idempotency_key":"private-operation-key","message":"private-message",
+        "provenance":{"model":"private-model","session_id":"private-session"},
+        "changes":[{"action":"put","path":"private-path","contents":"private-contents"}]
+    })).await;
+    assert_eq!(reply.status(), 200);
+    let id = reply.headers()["request-id"].to_str().unwrap().to_owned();
+    assert_eq!(
+        reply.json::<Value>().await.unwrap()["provenance_recorded"],
+        false
+    );
+    let log = std::fs::read_to_string(diagnostics).unwrap();
+    let expected =
+        format!("provenance record failed request_id={id} error=metadata storage failed");
+    assert!(
+        log.lines().any(|line| line == expected),
+        "missing safe diagnostic for {id}"
+    );
+    for private in [
+        token,
+        "private-store-detail",
+        "private-operation-key",
+        "private-message",
+        "private-model",
+        "private-session",
+        "private-path",
+        "private-contents",
+    ] {
+        assert!(!log.contains(private), "a private value reached the log");
+    }
+    sqlx::query("DROP TRIGGER fail_provenance")
+        .execute(&mut connection)
+        .await
+        .unwrap();
 }

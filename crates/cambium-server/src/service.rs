@@ -2,6 +2,7 @@
 
 use std::{
     collections::HashMap,
+    io::Write as _,
     sync::{Arc, Mutex, Weak},
 };
 
@@ -78,6 +79,7 @@ pub(crate) struct Reservation<'a> {
     principal: &'a Principal,
     key: &'a OperationKey,
     run_id: &'a RequestId,
+    request_id: &'a RequestId,
     pub(crate) saved: Option<Value>,
 }
 
@@ -262,6 +264,7 @@ impl App {
                         principal: &principal,
                         key: &key,
                         run_id: &run_id,
+                        request_id: &request_id,
                         saved: reservation,
                     };
                     let outcome = self
@@ -911,7 +914,16 @@ impl App {
                 self.clock.now_ms(),
             )
             .await
-            .unwrap_or(false);
+            .unwrap_or_else(|error| {
+                // StoreError's Display omits driver text and request details. Losing
+                // stderr must not turn the applied commit into a failed response.
+                let _ = writeln!(
+                    std::io::stderr().lock(),
+                    "provenance record failed request_id={} error={error}",
+                    reservation.request_id
+                );
+                false
+            });
         let mut response = json!({"commit_id": result.commit_id, "tree_id": result.tree_id, "provenance_recorded": recorded});
         if let Some(parent) = result.parent_commit_id {
             response["parent_commit_id"] = json!(parent);
