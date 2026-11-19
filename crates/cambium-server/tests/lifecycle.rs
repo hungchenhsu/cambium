@@ -36,6 +36,9 @@ struct FaultBackend {
     race_creation: AtomicBool,
     lose_seal_response: AtomicBool,
     fail_delete: AtomicBool,
+    lose_delete_response: AtomicBool,
+    fail_ref_removal: AtomicBool,
+    lose_ref_removal_response: AtomicBool,
     lose_copy_response: AtomicBool,
     lose_ref_response: AtomicBool,
     block_after_copy: AtomicBool,
@@ -65,7 +68,11 @@ impl Backend for FaultBackend {
         if self.fail_delete.swap(false, Ordering::SeqCst) {
             return Err(BackendError::Unavailable);
         }
-        self.backend.delete_repository(id).await
+        self.backend.delete_repository(id).await?;
+        if self.lose_delete_response.swap(false, Ordering::SeqCst) {
+            return Err(BackendError::Unavailable);
+        }
+        Ok(())
     }
     async fn seal_repository(&self, id: &BackendRepositoryId) -> Result<(), BackendError> {
         self.backend.seal_repository(id).await?;
@@ -176,7 +183,14 @@ impl Backend for FaultBackend {
                 )
                 .await?;
         }
+        let removes_ref = updates.iter().any(|update| update.new.is_none());
+        if removes_ref && self.fail_ref_removal.swap(false, Ordering::SeqCst) {
+            return Err(BackendError::Unavailable);
+        }
         let result = self.backend.update_refs(id, updates).await?;
+        if removes_ref && self.lose_ref_removal_response.swap(false, Ordering::SeqCst) {
+            return Err(BackendError::Unavailable);
+        }
         if updates
             .iter()
             .any(|update| update.name == "refs/heads/main")
@@ -265,26 +279,7 @@ async fn ephemeral_ownership_survives_lost_replies_expiry_and_name_reuse() {
             .unwrap(),
     );
     let clock = Arc::new(TestClock(AtomicI64::new(NOW)));
-    let backend = Arc::new(FaultBackend {
-        backend: server.backend.clone(),
-        list_refs_calls: AtomicUsize::new(0),
-        lose_next_response: AtomicBool::new(false),
-        lose_creation_response: AtomicBool::new(false),
-        race_creation: AtomicBool::new(false),
-        lose_seal_response: AtomicBool::new(false),
-        fail_delete: AtomicBool::new(false),
-        lose_copy_response: AtomicBool::new(false),
-        lose_ref_response: AtomicBool::new(false),
-        block_after_copy: AtomicBool::new(false),
-        stale_cas_once: AtomicBool::new(false),
-        fail_rescue_for: std::sync::Mutex::new(None),
-        block_copy: AtomicBool::new(false),
-        copy_admitted: Notify::new(),
-        copy_release: Notify::new(),
-        block_next: AtomicBool::new(false),
-        admitted: Notify::new(),
-        release: Notify::new(),
-    });
+    let backend = faults(server.backend.clone());
     let mut app = Arc::new(App::new(
         store.clone(),
         backend.clone(),
@@ -479,7 +474,63 @@ async fn ephemeral_ownership_survives_lost_replies_expiry_and_name_reuse() {
             .unwrap()[0]
             .is_some()
     );
+    // Reopen on both sides of removing the ref, before recording its expiry.
+    for (fault, landed) in [
+        (&backend.fail_ref_removal, false),
+        (&backend.lose_ref_removal_response, true),
+    ] {
+        fault.store(true, Ordering::SeqCst);
+        assert!(app.run_lifecycle_once().await.is_err());
+        let reopened = Arc::new(
+            SqliteStore::open(&path, TokenSettings::default())
+                .await
+                .unwrap(),
+        );
+        let pending = reopened
+            .get_branch(&principal.tenant_id, &repo_id, &branch_id)
+            .await
+            .unwrap();
+        assert_eq!(pending.state, "expiring");
+        assert_eq!(
+            reopened
+                .expiry_summary(&principal.tenant_id, &repo_id)
+                .await
+                .unwrap()
+                .count,
+            0
+        );
+        let refs = backend
+            .list_refs(&backend_id, &["refs/heads/owned".into()])
+            .await
+            .unwrap()
+            .refs;
+        assert_eq!(refs.is_empty(), landed);
+        app = Arc::new(App::new(
+            reopened,
+            backend.clone(),
+            clock.clone(),
+            &[42; 32],
+            server.git.clone(),
+        ));
+        app.recover_at_startup().await.unwrap();
+    }
     app.run_lifecycle_once().await.unwrap();
+    assert_eq!(
+        store
+            .get_branch(&principal.tenant_id, &repo_id, &branch_id)
+            .await
+            .unwrap()
+            .state,
+        "expired"
+    );
+    assert_eq!(
+        store
+            .expiry_summary(&principal.tenant_id, &repo_id)
+            .await
+            .unwrap()
+            .count,
+        1
+    );
     let names: Vec<_> = backend
         .list_refs(&backend_id, &[])
         .await
@@ -1130,6 +1181,9 @@ fn faults(backend: cambium_backend_enroute::EnrouteBackend) -> Arc<FaultBackend>
         race_creation: AtomicBool::new(false),
         lose_seal_response: AtomicBool::new(false),
         fail_delete: AtomicBool::new(false),
+        lose_delete_response: AtomicBool::new(false),
+        fail_ref_removal: AtomicBool::new(false),
+        lose_ref_removal_response: AtomicBool::new(false),
         lose_copy_response: AtomicBool::new(false),
         lose_ref_response: AtomicBool::new(false),
         block_after_copy: AtomicBool::new(false),
@@ -1481,11 +1535,41 @@ async fn ambiguous_copies_seals_and_deletions_never_delete_an_active_or_unreconc
     backend.fail_delete.store(true, Ordering::SeqCst);
     assert!(app.run_lifecycle_once().await.is_err());
     assert!(backend.list_refs(&old, &[]).await.is_ok());
+    backend.lose_delete_response.store(true, Ordering::SeqCst);
+    assert!(app.run_lifecycle_once().await.is_err());
+    assert!(matches!(
+        backend.list_refs(&old, &[]).await,
+        Err(BackendError::RepositoryNotFound)
+    ));
+    let reopened = Arc::new(
+        SqliteStore::open(&path, TokenSettings::default())
+            .await
+            .unwrap(),
+    );
+    let deleting = reopened
+        .running_compaction(&principal.tenant_id, &repository)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(deleting.stage, "deleting");
+    app = fast_app(
+        reopened.clone(),
+        backend.clone(),
+        clock.clone(),
+        &server.git,
+    );
+    app.recover_at_startup().await.unwrap();
     app.run_lifecycle_once().await.unwrap();
     assert!(matches!(
         backend.list_refs(&old, &[]).await,
         Err(BackendError::RepositoryNotFound)
     ));
+    let finished = reopened
+        .get_compaction(&principal.tenant_id, &repository, &deleting.id)
+        .await
+        .unwrap();
+    assert_eq!(finished.stage, "complete");
+    assert!(finished.completed_at_ms.is_some());
     let current = store
         .get_repository(&principal.tenant_id, &repository)
         .await
