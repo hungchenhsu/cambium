@@ -49,7 +49,7 @@ const MAIN: &str = "refs/heads/main";
 /// Runs every backend-independent check in ADR-0007's suite.
 ///
 /// Section 5's stock-git push and section 7's git edge need a git endpoint and
-/// policy wiring, so adapters cover them in their own tests.
+/// policy wiring. Use [`crate::git_edge::run`] for those checks.
 pub async fn run(backend: &dyn Backend, ids: &Namespace) {
     lifecycle(backend, ids).await;
     refs(backend, ids).await;
@@ -419,7 +419,7 @@ async fn verified(
 }
 
 /// Lists every file under a tree as (path, mode, contents), recursively.
-async fn files(
+pub(crate) async fn files(
     backend: &dyn Backend,
     id: &BackendRepositoryId,
     tree: &ObjectId,
@@ -605,7 +605,7 @@ fn mode(git_mode: u32) -> FileMode {
 /// ADR-0007 section 5: the path corpus written with `create_commit` reads back
 /// byte for byte with modes. Without `non_utf8_paths`, a non-UTF-8 path is `unsupported_path` and
 /// changes nothing. The stock-git half of section 5 needs a git endpoint and
-/// stays in each adapter's own tests.
+/// runs in [`crate::git_edge::run`].
 pub async fn exact_paths(backend: &dyn Backend, ids: &Namespace) {
     let id = fresh(backend, ids).await;
     let supported = backend.capabilities().non_utf8_paths;

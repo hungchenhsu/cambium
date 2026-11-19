@@ -1,6 +1,5 @@
 //! Runs the backend-independent conformance suite (ADR-0007) against the pinned
-//! patched Enroute. Stock-git paths and the git edge are covered by `backend.rs`
-//! and `hooks.rs`.
+//! patched Enroute. The server transport suite runs the shared git-edge checks.
 
 mod common;
 
