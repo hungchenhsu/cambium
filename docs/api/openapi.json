@@ -210,11 +210,157 @@
       }
     },
     "schemas": {
+      "Actor": {
+        "properties": {
+          "identity_id": {
+            "$ref": "#/components/schemas/IdentityId"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IdentityKind"
+          }
+        },
+        "required": [
+          "identity_id",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "BranchBody": {
+        "properties": {
+          "branch_id": {
+            "$ref": "#/components/schemas/BranchId"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "last_activity_at": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "branch_id",
+          "repository_id",
+          "name",
+          "state",
+          "created_at",
+          "created_by"
+        ],
+        "type": "object"
+      },
       "BranchId": {
         "type": "string"
       },
+      "Claims": {
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CompactionBody": {
+        "properties": {
+          "compaction_id": {
+            "$ref": "#/components/schemas/CompactionId"
+          },
+          "completed_at": {
+            "type": "string"
+          },
+          "conflict_count": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/Conflict"
+            },
+            "type": "array"
+          },
+          "conflicts_truncated": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "last_error": {
+            "type": "string"
+          },
+          "new_generation": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "next_page_token": {
+            "type": "string"
+          },
+          "old_generation": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "compaction_id",
+          "repository_id",
+          "stage",
+          "created_at",
+          "updated_at",
+          "old_generation",
+          "new_generation",
+          "conflict_count",
+          "conflicts",
+          "conflicts_truncated"
+        ],
+        "type": "object"
+      },
       "CompactionId": {
         "type": "string"
+      },
+      "Conflict": {
+        "properties": {
+          "active_value": {
+            "$ref": "#/components/schemas/ObjectId"
+          },
+          "old_value": {
+            "$ref": "#/components/schemas/ObjectId"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "rescue_ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "type": "object"
       },
       "CreateEphemeralBranchInput": {
         "additionalProperties": false,
@@ -246,6 +392,43 @@
           "repository_id",
           "name",
           "start_commit"
+        ],
+        "type": "object"
+      },
+      "CreateEphemeralBranchResponse": {
+        "properties": {
+          "branch_id": {
+            "$ref": "#/components/schemas/BranchId"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "last_activity_at": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "branch_id",
+          "repository_id",
+          "name",
+          "state",
+          "created_at",
+          "created_by"
         ],
         "type": "object"
       },
@@ -282,6 +465,39 @@
         ],
         "type": "object"
       },
+      "CreateIdentityResponse": {
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "disabled_at": {
+            "type": "string"
+          },
+          "identity_id": {
+            "$ref": "#/components/schemas/IdentityId"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IdentityKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner_id": {
+            "$ref": "#/components/schemas/IdentityId"
+          }
+        },
+        "required": [
+          "identity_id",
+          "kind",
+          "name",
+          "created_at",
+          "created_by"
+        ],
+        "type": "object"
+      },
       "CreateRepositoryInput": {
         "additionalProperties": false,
         "properties": {
@@ -305,6 +521,41 @@
         ],
         "type": "object"
       },
+      "CreateRepositoryResponse": {
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "default_branch": {
+            "type": "string"
+          },
+          "git_url": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository_id",
+          "name",
+          "default_branch",
+          "state",
+          "created_at",
+          "created_by",
+          "git_url"
+        ],
+        "type": "object"
+      },
       "DeleteRepositoryInput": {
         "additionalProperties": false,
         "properties": {
@@ -322,6 +573,51 @@
         "required": [
           "repository_id"
         ],
+        "type": "object"
+      },
+      "DeleteRepositoryResponse": {
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          }
+        },
+        "required": [
+          "deleted",
+          "repository_id"
+        ],
+        "type": "object"
+      },
+      "DiffEntry": {
+        "oneOf": [
+          {
+            "required": [
+              "path"
+            ]
+          },
+          {
+            "required": [
+              "path_b64"
+            ]
+          }
+        ],
+        "properties": {
+          "new": {
+            "$ref": "#/components/schemas/Entry"
+          },
+          "old": {
+            "$ref": "#/components/schemas/Entry"
+          },
+          "path": {
+            "type": "string"
+          },
+          "path_b64": {
+            "contentEncoding": "base64",
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "DiffInput": {
@@ -363,6 +659,35 @@
         ],
         "type": "object"
       },
+      "DiffResponse": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/DiffEntry"
+            },
+            "type": "array"
+          },
+          "from": {
+            "$ref": "#/components/schemas/ObjectId"
+          },
+          "next_page_token": {
+            "type": "string"
+          },
+          "to": {
+            "$ref": "#/components/schemas/ObjectId"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "entries",
+          "from",
+          "to",
+          "truncated"
+        ],
+        "type": "object"
+      },
       "DisableIdentityInput": {
         "additionalProperties": false,
         "properties": {
@@ -379,6 +704,55 @@
         },
         "required": [
           "identity_id"
+        ],
+        "type": "object"
+      },
+      "DisableIdentityResponse": {
+        "properties": {
+          "disabled": {
+            "type": "boolean"
+          },
+          "identity_id": {
+            "$ref": "#/components/schemas/IdentityId"
+          }
+        },
+        "required": [
+          "disabled",
+          "identity_id"
+        ],
+        "type": "object"
+      },
+      "Entry": {
+        "oneOf": [
+          {
+            "required": [
+              "path"
+            ]
+          },
+          {
+            "required": [
+              "path_b64"
+            ]
+          }
+        ],
+        "properties": {
+          "mode": {
+            "type": "string"
+          },
+          "object_id": {
+            "$ref": "#/components/schemas/ObjectId"
+          },
+          "path": {
+            "type": "string"
+          },
+          "path_b64": {
+            "contentEncoding": "base64",
+            "type": "string"
+          }
+        },
+        "required": [
+          "object_id",
+          "mode"
         ],
         "type": "object"
       },
@@ -982,6 +1356,43 @@
         ],
         "type": "object"
       },
+      "ExtendBranchResponse": {
+        "properties": {
+          "branch_id": {
+            "$ref": "#/components/schemas/BranchId"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "last_activity_at": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "branch_id",
+          "repository_id",
+          "name",
+          "state",
+          "created_at",
+          "created_by"
+        ],
+        "type": "object"
+      },
       "FileChange": {
         "oneOf": [
           {
@@ -1089,6 +1500,43 @@
         ],
         "type": "object"
       },
+      "GetBranchResponse": {
+        "properties": {
+          "branch_id": {
+            "$ref": "#/components/schemas/BranchId"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "last_activity_at": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "branch_id",
+          "repository_id",
+          "name",
+          "state",
+          "created_at",
+          "created_by"
+        ],
+        "type": "object"
+      },
       "GetCommitProvenanceInput": {
         "additionalProperties": false,
         "properties": {
@@ -1112,6 +1560,29 @@
         ],
         "type": "object"
       },
+      "GetCommitProvenanceResponse": {
+        "properties": {
+          "claims": {
+            "$ref": "#/components/schemas/Claims"
+          },
+          "commit_id": {
+            "$ref": "#/components/schemas/ObjectId"
+          },
+          "recorded_at": {
+            "type": "string"
+          },
+          "recorded_by": {
+            "$ref": "#/components/schemas/Actor"
+          }
+        },
+        "required": [
+          "commit_id",
+          "recorded_at",
+          "recorded_by",
+          "claims"
+        ],
+        "type": "object"
+      },
       "GetIdentityInput": {
         "additionalProperties": false,
         "properties": {
@@ -1128,6 +1599,39 @@
         },
         "required": [
           "identity_id"
+        ],
+        "type": "object"
+      },
+      "GetIdentityResponse": {
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "disabled_at": {
+            "type": "string"
+          },
+          "identity_id": {
+            "$ref": "#/components/schemas/IdentityId"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IdentityKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner_id": {
+            "$ref": "#/components/schemas/IdentityId"
+          }
+        },
+        "required": [
+          "identity_id",
+          "kind",
+          "name",
+          "created_at",
+          "created_by"
         ],
         "type": "object"
       },
@@ -1172,6 +1676,41 @@
         ],
         "type": "object"
       },
+      "GetReclamationResponse": {
+        "properties": {
+          "active_generation": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "compaction": {
+            "$ref": "#/components/schemas/CompactionBody"
+          },
+          "fenced": {
+            "type": "boolean"
+          },
+          "oldest_expiry_at": {
+            "type": "string"
+          },
+          "overdue": {
+            "type": "boolean"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "unreclaimed_expiries": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "repository_id",
+          "active_generation",
+          "fenced",
+          "unreclaimed_expiries",
+          "overdue"
+        ],
+        "type": "object"
+      },
       "GetRepositoryInput": {
         "additionalProperties": false,
         "properties": {
@@ -1188,6 +1727,41 @@
         },
         "required": [
           "repository_id"
+        ],
+        "type": "object"
+      },
+      "GetRepositoryResponse": {
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "default_branch": {
+            "type": "string"
+          },
+          "git_url": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository_id",
+          "name",
+          "default_branch",
+          "state",
+          "created_at",
+          "created_by",
+          "git_url"
         ],
         "type": "object"
       },
@@ -1212,6 +1786,14 @@
         "type": "object"
       },
       "IdentityId": {
+        "type": "string"
+      },
+      "IdentityKind": {
+        "enum": [
+          "human",
+          "agent",
+          "system"
+        ],
         "type": "string"
       },
       "ListBranchesInput": {
@@ -1245,6 +1827,27 @@
         ],
         "type": "object"
       },
+      "ListBranchesResponse": {
+        "properties": {
+          "branches": {
+            "items": {
+              "$ref": "#/components/schemas/BranchBody"
+            },
+            "type": "array"
+          },
+          "next_page_token": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "branches",
+          "truncated"
+        ],
+        "type": "object"
+      },
       "ListRepositoriesInput": {
         "additionalProperties": false,
         "properties": {
@@ -1268,6 +1871,27 @@
             ]
           }
         },
+        "type": "object"
+      },
+      "ListRepositoriesResponse": {
+        "properties": {
+          "next_page_token": {
+            "type": "string"
+          },
+          "repositories": {
+            "items": {
+              "$ref": "#/components/schemas/RepositoryBody"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "repositories",
+          "truncated"
+        ],
         "type": "object"
       },
       "ListTreeInput": {
@@ -1309,6 +1933,37 @@
         ],
         "type": "object"
       },
+      "ListTreeResponse": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/Entry"
+            },
+            "type": "array"
+          },
+          "next_page_token": {
+            "type": "string"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/ObjectId"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/Warning"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "entries",
+          "revision",
+          "truncated"
+        ],
+        "type": "object"
+      },
       "MintTokenInput": {
         "additionalProperties": false,
         "properties": {
@@ -1347,22 +2002,46 @@
         ],
         "type": "object"
       },
+      "MintTokenResponse": {
+        "properties": {
+          "expires_at": {
+            "type": "string"
+          },
+          "identity_id": {
+            "$ref": "#/components/schemas/IdentityId"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IdentityKind"
+          },
+          "repositories": {
+            "items": {
+              "$ref": "#/components/schemas/RepositoryId"
+            },
+            "type": "array"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          },
+          "token": {
+            "type": "string"
+          },
+          "token_id": {
+            "$ref": "#/components/schemas/TokenId"
+          }
+        },
+        "required": [
+          "token_id",
+          "identity_id",
+          "kind",
+          "scope",
+          "expires_at",
+          "token"
+        ],
+        "type": "object"
+      },
       "ObjectId": {
         "description": "SHA-1 at the current protocol version. Never accepts abbreviated hashes.",
         "type": "string"
-      },
-      "OperationResult": {
-        "additionalProperties": true,
-        "description": "Operation-specific JSON object; see docs/api/operations.md. Absent values are omitted, never null. Unknown fields must be ignored.",
-        "properties": {
-          "warnings": {
-            "items": {
-              "$ref": "#/components/schemas/Warning"
-            },
-            "type": "array"
-          }
-        },
-        "type": "object"
       },
       "PromoteBranchInput": {
         "additionalProperties": false,
@@ -1384,6 +2063,43 @@
         "required": [
           "repository_id",
           "branch_id"
+        ],
+        "type": "object"
+      },
+      "PromoteBranchResponse": {
+        "properties": {
+          "branch_id": {
+            "$ref": "#/components/schemas/BranchId"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "last_activity_at": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "branch_id",
+          "repository_id",
+          "name",
+          "state",
+          "created_at",
+          "created_by"
         ],
         "type": "object"
       },
@@ -1455,6 +2171,104 @@
         ],
         "type": "object"
       },
+      "ReadFileResponse": {
+        "allOf": [
+          {
+            "oneOf": [
+              {
+                "required": [
+                  "path"
+                ]
+              },
+              {
+                "required": [
+                  "path_b64"
+                ]
+              }
+            ]
+          },
+          {
+            "oneOf": [
+              {
+                "required": [
+                  "contents"
+                ]
+              },
+              {
+                "required": [
+                  "contents_b64"
+                ]
+              }
+            ]
+          }
+        ],
+        "properties": {
+          "contents": {
+            "type": "string"
+          },
+          "contents_b64": {
+            "contentEncoding": "base64",
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "object_id": {
+            "$ref": "#/components/schemas/ObjectId"
+          },
+          "path": {
+            "type": "string"
+          },
+          "path_b64": {
+            "contentEncoding": "base64",
+            "type": "string"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/ObjectId"
+          }
+        },
+        "required": [
+          "object_id",
+          "mode",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "RepositoryBody": {
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "default_branch": {
+            "type": "string"
+          },
+          "git_url": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository_id",
+          "name",
+          "default_branch",
+          "state",
+          "created_at",
+          "created_by",
+          "git_url"
+        ],
+        "type": "object"
+      },
       "RepositoryId": {
         "type": "string"
       },
@@ -1477,6 +2291,69 @@
         ],
         "type": "object"
       },
+      "RequestCompactionResponse": {
+        "properties": {
+          "compaction_id": {
+            "$ref": "#/components/schemas/CompactionId"
+          },
+          "completed_at": {
+            "type": "string"
+          },
+          "conflict_count": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/Conflict"
+            },
+            "type": "array"
+          },
+          "conflicts_truncated": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "last_error": {
+            "type": "string"
+          },
+          "new_generation": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "next_page_token": {
+            "type": "string"
+          },
+          "old_generation": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "repository_id": {
+            "$ref": "#/components/schemas/RepositoryId"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "compaction_id",
+          "repository_id",
+          "stage",
+          "created_at",
+          "updated_at",
+          "old_generation",
+          "new_generation",
+          "conflict_count",
+          "conflicts",
+          "conflicts_truncated"
+        ],
+        "type": "object"
+      },
       "RevokeTokenInput": {
         "additionalProperties": false,
         "properties": {
@@ -1492,6 +2369,21 @@
           }
         },
         "required": [
+          "token_id"
+        ],
+        "type": "object"
+      },
+      "RevokeTokenResponse": {
+        "properties": {
+          "revoked": {
+            "type": "boolean"
+          },
+          "token_id": {
+            "$ref": "#/components/schemas/TokenId"
+          }
+        },
+        "required": [
+          "revoked",
           "token_id"
         ],
         "type": "object"
@@ -1644,6 +2536,38 @@
           "changes"
         ],
         "type": "object"
+      },
+      "WriteChangesetResponse": {
+        "properties": {
+          "commit_id": {
+            "$ref": "#/components/schemas/ObjectId"
+          },
+          "parent_commit_id": {
+            "$ref": "#/components/schemas/ObjectId"
+          },
+          "path_collision_check_complete": {
+            "type": "boolean"
+          },
+          "provenance_recorded": {
+            "type": "boolean"
+          },
+          "tree_id": {
+            "$ref": "#/components/schemas/ObjectId"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/Warning"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "commit_id",
+          "tree_id",
+          "provenance_recorded",
+          "path_collision_check_complete"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -1684,7 +2608,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/CreateEphemeralBranchResponse"
                 }
               }
             },
@@ -1758,7 +2682,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/CreateIdentityResponse"
                 }
               }
             },
@@ -1832,7 +2756,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/CreateRepositoryResponse"
                 }
               }
             },
@@ -1906,7 +2830,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/DeleteRepositoryResponse"
                 }
               }
             },
@@ -1975,7 +2899,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/DiffResponse"
                 }
               }
             },
@@ -2049,7 +2973,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/DisableIdentityResponse"
                 }
               }
             },
@@ -2123,7 +3047,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/ExtendBranchResponse"
                 }
               }
             },
@@ -2192,7 +3116,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/GetBranchResponse"
                 }
               }
             },
@@ -2261,7 +3185,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/GetCommitProvenanceResponse"
                 }
               }
             },
@@ -2330,7 +3254,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/GetIdentityResponse"
                 }
               }
             },
@@ -2399,7 +3323,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/GetReclamationResponse"
                 }
               }
             },
@@ -2468,7 +3392,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/GetRepositoryResponse"
                 }
               }
             },
@@ -2537,7 +3461,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/ListBranchesResponse"
                 }
               }
             },
@@ -2606,7 +3530,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/ListRepositoriesResponse"
                 }
               }
             },
@@ -2675,7 +3599,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/ListTreeResponse"
                 }
               }
             },
@@ -2749,7 +3673,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/MintTokenResponse"
                 }
               }
             },
@@ -2823,7 +3747,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/PromoteBranchResponse"
                 }
               }
             },
@@ -2892,7 +3816,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/ReadFileResponse"
                 }
               }
             },
@@ -2966,7 +3890,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/RequestCompactionResponse"
                 }
               }
             },
@@ -3040,7 +3964,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/RevokeTokenResponse"
                 }
               }
             },
@@ -3114,7 +4038,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationResult"
+                  "$ref": "#/components/schemas/WriteChangesetResponse"
                 }
               }
             },

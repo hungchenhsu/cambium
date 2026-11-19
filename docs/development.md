@@ -34,8 +34,8 @@ dependencies change. All crates have `publish = false` during scaffolding.
 
 The protocol crate validates typed IDs and byte-field pairs and owns the
 [error registry](api/errors.md). The server crate generates the
-[OpenAPI description](api/openapi.json) from the MCP request schemas and that
-registry; a test fails when the published file is stale. The backend crate defines object-safe storage
+[OpenAPI description](api/openapi.json) from the MCP request schemas, the [typed success bodies](../crates/cambium-server/src/responses.rs),
+and that registry; a test fails when the published file is stale. The backend crate defines object-safe storage
 and git policy traits, including the durable seal required by ADR-0013. The
 store crate implements SQLite migrations and tenant-scoped metadata and token
 operations. The server crate implements strict shared requests, repository and

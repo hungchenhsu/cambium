@@ -1,0 +1,371 @@
+{
+  "create_ephemeral_branch": [
+    {
+      "branch_id": "brn_00000000000000000000000001",
+      "created_at": "2027-01-15T08:00:00Z",
+      "created_by": {
+        "identity_id": "idn_00000000000000000000000001",
+        "kind": "human"
+      },
+      "expires_at": "2027-01-15T08:00:10Z",
+      "name": "refs/heads/temporary",
+      "repository_id": "rep_00000000000000000000000001",
+      "state": "active"
+    }
+  ],
+  "create_identity": [
+    {
+      "created_at": "2027-01-15T08:00:00Z",
+      "created_by": {
+        "identity_id": "idn_00000000000000000000000001",
+        "kind": "human"
+      },
+      "identity_id": "idn_00000000000000000000000002",
+      "kind": "agent",
+      "name": "Fixture",
+      "owner_id": "idn_00000000000000000000000001"
+    }
+  ],
+  "create_repository": [
+    {
+      "created_at": "2027-01-15T08:00:00Z",
+      "created_by": {
+        "identity_id": "idn_00000000000000000000000001",
+        "kind": "human"
+      },
+      "default_branch": "refs/heads/main",
+      "git_url": "https://git.example.invalid/fixtures/wire.git",
+      "name": "wire",
+      "repository_id": "rep_00000000000000000000000001",
+      "state": "ready"
+    }
+  ],
+  "delete_repository": [
+    {
+      "deleted": true,
+      "repository_id": "rep_00000000000000000000000001"
+    }
+  ],
+  "diff": [
+    {
+      "entries": [
+        {
+          "new": {
+            "mode": "100644",
+            "object_id": "ba01f6b05bdbb386b35f4d086e268c5d422cafb9",
+            "path": "TEXT"
+          },
+          "path": "TEXT"
+        },
+        {
+          "old": {
+            "mode": "100644",
+            "object_id": "b3fa41da3cc6d59df943f21852d35e5a4f8b5921",
+            "path": "gone"
+          },
+          "path": "gone"
+        },
+        {
+          "new": {
+            "mode": "100644",
+            "object_id": "f55556eed1d295cad58ed30eba0b3c1481ec7ba9",
+            "path": "text"
+          },
+          "old": {
+            "mode": "100644",
+            "object_id": "489ce0f857e7634a0eb9f328265a3e91fad49f61",
+            "path": "text"
+          },
+          "path": "text"
+        }
+      ],
+      "from": "08fed601a76966314870e391afc718d0c5764719",
+      "to": "8249d963f83efd324b5c83af860464bb99cd7224",
+      "truncated": false
+    }
+  ],
+  "disable_identity": [
+    {
+      "disabled": true,
+      "identity_id": "idn_00000000000000000000000002"
+    }
+  ],
+  "extend_branch": [
+    {
+      "branch_id": "brn_00000000000000000000000001",
+      "created_at": "2027-01-15T08:00:00Z",
+      "created_by": {
+        "identity_id": "idn_00000000000000000000000001",
+        "kind": "human"
+      },
+      "expires_at": "2027-01-15T08:02:00Z",
+      "name": "refs/heads/temporary",
+      "repository_id": "rep_00000000000000000000000001",
+      "state": "active"
+    }
+  ],
+  "get_branch": [
+    {
+      "branch_id": "brn_00000000000000000000000001",
+      "created_at": "2027-01-15T08:00:00Z",
+      "created_by": {
+        "identity_id": "idn_00000000000000000000000001",
+        "kind": "human"
+      },
+      "expires_at": "2027-01-15T08:00:10Z",
+      "name": "refs/heads/temporary",
+      "repository_id": "rep_00000000000000000000000001",
+      "state": "active"
+    }
+  ],
+  "get_commit_provenance": [
+    {
+      "claims": {
+        "model": "fixture-model",
+        "session_id": "fixture-run"
+      },
+      "commit_id": "8249d963f83efd324b5c83af860464bb99cd7224",
+      "recorded_at": "2027-01-15T08:00:00Z",
+      "recorded_by": {
+        "identity_id": "idn_00000000000000000000000001",
+        "kind": "human"
+      }
+    }
+  ],
+  "get_identity": [
+    {
+      "created_at": "2027-01-15T08:00:00Z",
+      "created_by": {
+        "identity_id": "idn_00000000000000000000000001",
+        "kind": "human"
+      },
+      "identity_id": "idn_00000000000000000000000002",
+      "kind": "agent",
+      "name": "Fixture",
+      "owner_id": "idn_00000000000000000000000001"
+    },
+    {
+      "created_at": "2027-01-15T08:00:00Z",
+      "created_by": {
+        "identity_id": "idn_00000000000000000000000001",
+        "kind": "human"
+      },
+      "disabled_at": "2027-01-15T08:00:00Z",
+      "identity_id": "idn_00000000000000000000000002",
+      "kind": "agent",
+      "name": "Fixture",
+      "owner_id": "idn_00000000000000000000000001"
+    }
+  ],
+  "get_reclamation": [
+    {
+      "active_generation": 1,
+      "fenced": false,
+      "overdue": false,
+      "repository_id": "rep_00000000000000000000000001",
+      "unreclaimed_expiries": 0
+    },
+    {
+      "active_generation": 1,
+      "compaction": {
+        "compaction_id": "cmp_00000000000000000000000001",
+        "conflict_count": 0,
+        "conflicts": [],
+        "conflicts_truncated": false,
+        "created_at": "2027-01-15T08:00:00Z",
+        "new_generation": 2,
+        "old_generation": 1,
+        "repository_id": "rep_00000000000000000000000001",
+        "stage": "preparing",
+        "updated_at": "2027-01-15T08:00:00Z"
+      },
+      "fenced": false,
+      "overdue": false,
+      "repository_id": "rep_00000000000000000000000001",
+      "unreclaimed_expiries": 0
+    }
+  ],
+  "get_repository": [
+    {
+      "created_at": "2027-01-15T08:00:00Z",
+      "created_by": {
+        "identity_id": "idn_00000000000000000000000001",
+        "kind": "human"
+      },
+      "default_branch": "refs/heads/main",
+      "git_url": "https://git.example.invalid/fixtures/wire.git",
+      "name": "wire",
+      "repository_id": "rep_00000000000000000000000001",
+      "state": "ready"
+    }
+  ],
+  "list_branches": [
+    {
+      "branches": [
+        {
+          "branch_id": "brn_00000000000000000000000001",
+          "created_at": "2027-01-15T08:00:00Z",
+          "created_by": {
+            "identity_id": "idn_00000000000000000000000001",
+            "kind": "human"
+          },
+          "expires_at": "2027-01-15T08:00:10Z",
+          "name": "refs/heads/temporary",
+          "repository_id": "rep_00000000000000000000000001",
+          "state": "active"
+        }
+      ],
+      "truncated": false
+    }
+  ],
+  "list_repositories": [
+    {
+      "repositories": [
+        {
+          "created_at": "2027-01-15T08:00:00Z",
+          "created_by": {
+            "identity_id": "idn_00000000000000000000000001",
+            "kind": "human"
+          },
+          "default_branch": "refs/heads/main",
+          "git_url": "https://git.example.invalid/fixtures/wire.git",
+          "name": "wire",
+          "repository_id": "rep_00000000000000000000000001",
+          "state": "ready"
+        }
+      ],
+      "truncated": false
+    }
+  ],
+  "list_tree": [
+    {
+      "entries": [
+        {
+          "mode": "100644",
+          "object_id": "ba01f6b05bdbb386b35f4d086e268c5d422cafb9",
+          "path": "TEXT"
+        },
+        {
+          "mode": "100644",
+          "object_id": "f55556eed1d295cad58ed30eba0b3c1481ec7ba9",
+          "path": "text"
+        }
+      ],
+      "revision": "8249d963f83efd324b5c83af860464bb99cd7224",
+      "truncated": false,
+      "warnings": [
+        {
+          "code": "path_collision",
+          "details": {
+            "groups": [
+              [
+                {
+                  "path": "TEXT"
+                },
+                {
+                  "path": "text"
+                }
+              ]
+            ]
+          },
+          "message": "Some paths collide under case folding or Unicode normalization"
+        }
+      ]
+    }
+  ],
+  "mint_token": [
+    {
+      "expires_at": "2027-01-15T08:01:00Z",
+      "identity_id": "idn_00000000000000000000000002",
+      "kind": "agent",
+      "repositories": [
+        "rep_00000000000000000000000001"
+      ],
+      "scope": "repo:read",
+      "token": "redacted-disposable-test-token",
+      "token_id": "tok_00000000000000000000000001"
+    }
+  ],
+  "promote_branch": [
+    {
+      "branch_id": "brn_00000000000000000000000001",
+      "created_at": "2027-01-15T08:00:00Z",
+      "created_by": {
+        "identity_id": "idn_00000000000000000000000001",
+        "kind": "human"
+      },
+      "name": "refs/heads/temporary",
+      "repository_id": "rep_00000000000000000000000001",
+      "state": "promoted"
+    }
+  ],
+  "read_file": [
+    {
+      "contents": "updated",
+      "mode": "100644",
+      "object_id": "f55556eed1d295cad58ed30eba0b3c1481ec7ba9",
+      "path": "text",
+      "revision": "8249d963f83efd324b5c83af860464bb99cd7224"
+    },
+    {
+      "contents_b64": "AP8=",
+      "mode": "100644",
+      "object_id": "ba01f6b05bdbb386b35f4d086e268c5d422cafb9",
+      "path": "TEXT",
+      "revision": "8249d963f83efd324b5c83af860464bb99cd7224"
+    }
+  ],
+  "request_compaction": [
+    {
+      "compaction_id": "cmp_00000000000000000000000001",
+      "conflict_count": 0,
+      "conflicts": [],
+      "conflicts_truncated": false,
+      "created_at": "2027-01-15T08:00:00Z",
+      "new_generation": 2,
+      "old_generation": 1,
+      "repository_id": "rep_00000000000000000000000001",
+      "stage": "preparing",
+      "updated_at": "2027-01-15T08:00:00Z"
+    }
+  ],
+  "revoke_token": [
+    {
+      "revoked": true,
+      "token_id": "tok_00000000000000000000000001"
+    }
+  ],
+  "write_changeset": [
+    {
+      "commit_id": "08fed601a76966314870e391afc718d0c5764719",
+      "path_collision_check_complete": true,
+      "provenance_recorded": true,
+      "tree_id": "2e3febedccb937c83445798fdb18b06d6182ed8d"
+    },
+    {
+      "commit_id": "8249d963f83efd324b5c83af860464bb99cd7224",
+      "parent_commit_id": "08fed601a76966314870e391afc718d0c5764719",
+      "path_collision_check_complete": true,
+      "provenance_recorded": true,
+      "tree_id": "58431916a80040e9a2173d464437f57e08f1c810",
+      "warnings": [
+        {
+          "code": "path_collision",
+          "details": {
+            "groups": [
+              [
+                {
+                  "path": "TEXT"
+                },
+                {
+                  "path": "text"
+                }
+              ]
+            ]
+          },
+          "message": "Some paths collide under case folding or Unicode normalization"
+        }
+      ]
+    }
+  ]
+}

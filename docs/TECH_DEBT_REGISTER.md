@@ -5,7 +5,6 @@ and what would close it. Remove an entry in the pull request that resolves it.
 
 | Item | Source | Why it is open | To close it |
 | --- | --- | --- | --- |
-| OpenAPI success bodies are untyped; `OperationResult` is a generic object | [#25](https://github.com/hungchenhsu/cambium/pull/25) | Responses are built as JSON values, not typed structs | Give each operation a response type with a JSON Schema, and generate it into `docs/api/openapi.json` |
 | `cambium-cli` speaks plain HTTP only | [ADR-0019](adr/0019-cli.md) | TLS adds a cryptography dependency that the ADR-0003 allow-list must cover | Decide the TLS stack in an ADR, then enable it in `reqwest` |
 | `cambium-cli` has only the `en` catalog | [ADR-0019](adr/0019-cli.md), [ADR-0005](adr/0005-internationalization.md) | The first release needed one locale | Add `locales/zh-TW/cli.ftl` and locale negotiation for human output only |
 | A failed provenance record is not logged | [#26](https://github.com/hungchenhsu/cambium/pull/26) | The server crate has no logging yet | Log the store error with the request ID when `provenance_recorded` is false |

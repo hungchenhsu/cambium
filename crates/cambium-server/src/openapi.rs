@@ -1,7 +1,7 @@
 //! OpenAPI description of the HTTP operations and the full error registry (ADR-0012).
 //!
 //! The document is derived from the same request schemas that MCP `tools/list`
-//! publishes and from the `cambium-protocol` registry. `docs/api/openapi.json`
+//! publishes, the service response types and the `cambium-protocol` registry. `docs/api/openapi.json`
 //! is checked against this output by a test, so the published contract cannot
 //! drift from the code.
 
@@ -22,6 +22,9 @@ pub fn document() -> Value {
         let input = hoist_definitions(tool["inputSchema"].clone(), &mut schemas);
         let schema_name = pascal_case(name) + "Input";
         insert_unique(&mut schemas, schema_name.clone(), input);
+        let output_name = pascal_case(name) + "Response";
+        let output = hoist_definitions(crate::responses::schema_for_operation(name), &mut schemas);
+        insert_unique(&mut schemas, output_name.clone(), output);
         let mut parameters = Vec::new();
         if !read_only {
             parameters.push(json!({"$ref": "#/components/parameters/IdempotencyKey"}));
@@ -34,7 +37,7 @@ pub fn document() -> Value {
                 "required": true,
                 "content": {"application/json": {"schema": {"$ref": format!("#/components/schemas/{schema_name}")}}}
             },
-            "responses": responses(),
+            "responses": responses(&output_name),
         });
         if !parameters.is_empty() {
             operation["parameters"] = Value::Array(parameters);
@@ -43,15 +46,6 @@ pub fn document() -> Value {
     }
     schemas.insert("ErrorResponse".into(), error_response_schema());
     schemas.insert("Warning".into(), warning_schema());
-    schemas.insert(
-        "OperationResult".into(),
-        json!({
-            "type": "object",
-            "description": "Operation-specific JSON object; see docs/api/operations.md. Absent values are omitted, never null. Unknown fields must be ignored.",
-            "properties": {"warnings": {"type": "array", "items": {"$ref": "#/components/schemas/Warning"}}},
-            "additionalProperties": true
-        }),
-    );
     json!({
         "openapi": "3.1.0",
         "info": {
@@ -84,7 +78,7 @@ pub fn document() -> Value {
     })
 }
 
-fn responses() -> Value {
+fn responses(output_name: &str) -> Value {
     let mut responses = Map::new();
     responses.insert(
         "200".into(),
@@ -94,7 +88,7 @@ fn responses() -> Value {
                 "Request-Id": {"$ref": "#/components/headers/RequestId"},
                 "Idempotent-Replayed": {"$ref": "#/components/headers/IdempotentReplayed"}
             },
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OperationResult"}}}
+            "content": {"application/json": {"schema": {"$ref": format!("#/components/schemas/{output_name}")}}}
         }),
     );
     for status in statuses() {
@@ -361,11 +355,40 @@ mod tests {
         for tool in transport::tools() {
             let path = format!("/v1/operations/{}", tool["name"].as_str().unwrap());
             let operation = &paths[&path]["post"];
+            let success = &operation["responses"]["200"]["content"]["application/json"]["schema"];
+            let schema = document
+                .pointer(success["$ref"].as_str().unwrap().strip_prefix('#').unwrap())
+                .unwrap();
+            assert!(
+                schema["required"]
+                    .as_array()
+                    .is_some_and(|fields| !fields.is_empty()),
+                "{path}"
+            );
             let mutating = tool["annotations"]["readOnlyHint"] == false;
             assert_eq!(operation["parameters"].is_array(), mutating, "{path}");
             for status in statuses() {
                 assert!(operation["responses"][status.to_string()].is_object());
             }
+        }
+    }
+
+    #[test]
+    fn file_schema_types_both_names_of_each_exclusive_pair() {
+        let document = document();
+        let schema = &document["components"]["schemas"]["ReadFileResponse"];
+        for key in ["path", "path_b64", "contents", "contents_b64"] {
+            assert_eq!(schema["properties"][key]["type"], "string", "{key}");
+        }
+        for pair in [["path", "path_b64"], ["contents", "contents_b64"]] {
+            assert!(
+                schema["allOf"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|alternative| alternative["oneOf"]
+                        == json!([{"required": [pair[0]]}, {"required": [pair[1]]}]))
+            );
         }
     }
 
