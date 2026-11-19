@@ -314,3 +314,42 @@ async fn hooks_reject_untrusted_bytes_before_policy_and_preserve_all_four_calls(
         Err(HookError::Unavailable)
     ));
 }
+
+#[tokio::test]
+async fn both_configured_signers_work_during_rotation() {
+    let old = signature::SigningKey::from_seed(&[1; 32]);
+    let new = signature::SigningKey::from_seed(&[2; 32]);
+    let policy = Arc::new(Policy {
+        calls: AtomicUsize::new(0),
+    });
+    let endpoint = "http://cambium:8080/internal/enroute";
+    for (keys, expect_old) in [
+        (vec![old.verifying_key(), new.verifying_key()], true),
+        (vec![new.verifying_key()], false),
+    ] {
+        let adapter = HookAdapter::new(keys, endpoint, policy.clone()).unwrap();
+        for (signer, accepted) in [(&old, expect_old), (&new, true)] {
+            let (body, headers) = signed(signer, authorize("tenant/repository.git"));
+            let before = policy.calls.load(Ordering::SeqCst);
+            let response = adapter
+                .handle(
+                    "POST",
+                    "cambium:8080",
+                    "/internal/enroute",
+                    &headers,
+                    &body,
+                    1_700_000_000,
+                )
+                .await;
+            if accepted {
+                assert!(response.is_ok());
+            } else {
+                assert!(matches!(response, Err(HookError::Signature)));
+            }
+            assert_eq!(
+                policy.calls.load(Ordering::SeqCst),
+                before + usize::from(accepted)
+            );
+        }
+    }
+}
