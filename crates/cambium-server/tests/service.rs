@@ -566,11 +566,84 @@ async fn shared_operations_preserve_authorization_bytes_and_idempotent_effects()
             .await
             .is_err()
     );
+    check_completion_retry(&app, token, &principal.tenant_id, &path).await;
     store.close().await;
     let bytes = std::fs::read(&path).unwrap();
     for secret in [token.as_bytes(), reader.as_bytes()] {
         assert!(!bytes.windows(secret.len()).any(|v| v == secret));
     }
+}
+
+async fn check_completion_retry(
+    app: &Arc<App>,
+    token: &str,
+    tenant: &cambium_protocol::TenantId,
+    path: &std::path::Path,
+) {
+    use sqlx::{Connection as _, SqliteConnection, sqlite::SqliteConnectOptions};
+    use std::time::Duration;
+
+    let mut observer = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(path))
+        .await
+        .unwrap();
+    sqlx::query("CREATE TABLE completion_attempts (attempt INTEGER NOT NULL)")
+        .execute(&mut observer)
+        .await
+        .unwrap();
+    // RAISE(FAIL) retains the witness inserted before rejecting the update.
+    sqlx::query(
+        "CREATE TRIGGER delay_completion BEFORE UPDATE ON idempotency
+                 WHEN NEW.key = 'completion-retry' AND NEW.state = 'complete'
+                 BEGIN INSERT INTO completion_attempts VALUES (1);
+                 SELECT RAISE(FAIL, 'fixture storage outage'); END",
+    )
+    .execute(&mut observer)
+    .await
+    .unwrap();
+    let input = json!({"name":"completion-retry", "idempotency_key":"completion-retry"});
+    let task = tokio::spawn({
+        let app = app.clone();
+        let token = token.to_owned();
+        let input = input.clone();
+        async move { call(&app, &token, "create_repository", input).await }
+    });
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let rejected: bool =
+                sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM completion_attempts)")
+                    .fetch_one(&mut observer)
+                    .await
+                    .unwrap();
+            if rejected {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the completion write must have failed before retrying");
+    let applied_id: String = sqlx::query_scalar(
+        "SELECT id FROM repositories WHERE tenant_id = ? AND name = 'completion-retry' AND state = 'ready'",
+    ).bind(tenant.as_str()).fetch_one(&mut observer).await.unwrap();
+    assert!(!task.is_finished());
+    error(
+        call(app, token, "create_repository", input.clone()).await,
+        "idempotency_key_in_use",
+    );
+    sqlx::query("DROP TRIGGER delay_completion")
+        .execute(&mut observer)
+        .await
+        .unwrap();
+    let reply = tokio::time::timeout(Duration::from_secs(10), task)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!reply.replayed);
+    let created = success(reply);
+    assert_eq!(created["repository_id"], applied_id);
+    let replay = call(app, token, "create_repository", input).await;
+    assert!(replay.replayed);
+    assert_eq!(success(replay), created);
 }
 
 #[tokio::test]
