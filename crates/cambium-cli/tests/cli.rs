@@ -456,3 +456,21 @@ async fn machine_streams_and_exit_status_are_byte_identical_across_locales() {
         }
     }
 }
+
+#[test]
+fn traditional_chinese_identifies_the_invalid_argument() {
+    for (args, expected) in [
+        (vec!["call", "BAD"], "操作名稱必須使用小寫 snake_case。"),
+        (
+            vec!["call", "get_repository", "--input", "[]"],
+            "輸入資料必須是 JSON 物件。",
+        ),
+    ] {
+        let result = process_output(&args, ["zh_TW.UTF-8", "", ""], Some("test"));
+        assert_eq!(result.status.code(), Some(exit::USAGE));
+        assert_eq!(
+            String::from_utf8(result.stderr).unwrap().trim_end(),
+            expected
+        );
+    }
+}

@@ -212,10 +212,7 @@ impl Client {
             let _ = writeln!(
                 io.stderr,
                 "{}",
-                self.catalog.format(
-                    "invalid-input",
-                    &[("reason", "operation names are lowercase snake_case")]
-                )
+                self.catalog.format("invalid-operation-name", &[])
             );
             return exit::USAGE;
         }
@@ -410,7 +407,7 @@ fn read_input(
             let mut text = String::new();
             stdin
                 .read_to_string(&mut text)
-                .map_err(|_| catalog.format("unreadable-input", &[("source", "standard input")]))?;
+                .map_err(|_| catalog.format("unreadable-stdin", &[]))?;
             text
         }
         Some(value) => match value.strip_prefix('@') {
@@ -422,7 +419,7 @@ fn read_input(
     let value: Value = serde_json::from_str(&text)
         .map_err(|error| catalog.format("invalid-input", &[("reason", &error.to_string())]))?;
     if !value.is_object() {
-        return Err(catalog.format("invalid-input", &[("reason", "expected an object")]));
+        return Err(catalog.format("expected-object", &[]));
     }
     Ok(value)
 }

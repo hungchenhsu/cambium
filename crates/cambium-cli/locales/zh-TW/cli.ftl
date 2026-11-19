@@ -11,3 +11,6 @@ unreadable-input = 無法讀取輸入資料 { $source }。
 unreachable = 無法連線至 { $url }：{ $reason }
 unexpected-response = { $url } 傳回 HTTP { $status }，但回應中沒有 Cambium 錯誤物件。
 operations-header = { $url } 提供的操作：
+invalid-operation-name = 操作名稱必須使用小寫 snake_case。
+expected-object = 輸入資料必須是 JSON 物件。
+unreadable-stdin = 無法讀取標準輸入。

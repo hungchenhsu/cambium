@@ -12,3 +12,6 @@ unreadable-input = Could not read the input { $source }.
 unreachable = Could not reach { $url }: { $reason }
 unexpected-response = { $url } answered with HTTP { $status } and no Cambium error object.
 operations-header = Operations available on { $url }:
+invalid-operation-name = The input is not a JSON object: operation names are lowercase snake_case
+expected-object = The input is not a JSON object: expected an object
+unreadable-stdin = Could not read the input standard input.
