@@ -88,14 +88,16 @@ impl OperationsStore for SqliteStore {
     }
 
     async fn deployment_purge_expired_responses(&self, now_ms: i64) -> StoreResult<()> {
+        let mut tx = self.writer.begin().await?;
         sqlx::query("DELETE FROM idempotency WHERE expires_at_ms <= ? AND state != 'running'")
             .bind(now_ms)
-            .execute(&self.writer)
+            .execute(&mut *tx)
             .await?;
         sqlx::query("DELETE FROM internal_tokens WHERE expires_at_ms <= ?")
             .bind(now_ms)
-            .execute(&self.writer)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
         Ok(())
     }
 

@@ -1,6 +1,7 @@
 use cambium_protocol::{ErrorCode, RequestId};
 use cambium_store::{
     Bootstrap, SqliteStore, Store, TokenHash, TokenSettings,
+    compaction::CompactionStore,
     operations::{Claim, Completion, OperationKey, OperationsStore},
 };
 use serde_json::json;
@@ -243,5 +244,100 @@ async fn a_key_and_tombstoned_repository_remain_scoped_to_their_tenant() {
             .await
             .unwrap()
             .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn failed_response_cleanup_rolls_back_both_deletions() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("metadata.sqlite");
+    let store = SqliteStore::open(&path, TokenSettings::default())
+        .await
+        .unwrap();
+    let user = store
+        .deployment_bootstrap(
+            &Bootstrap {
+                tenant_slug: "cleanup".into(),
+                human_name: "Operator".into(),
+                token_hash: TokenHash([1; 32]),
+                expires_at_ms: NOW + 172_800_000,
+            },
+            NOW,
+        )
+        .await
+        .unwrap();
+    let key = OperationKey {
+        key: "completed".into(),
+        fingerprint: [3; 32],
+    };
+    let Claim::Run { run_id, .. } = store.claim_operation(&user, &key, NOW).await.unwrap() else {
+        panic!("expected a fresh reservation");
+    };
+    store
+        .finish_operation(
+            &user,
+            &key,
+            &run_id,
+            Some(&Completion {
+                status: 200,
+                encrypted_response: "opaque-envelope".into(),
+            }),
+            NOW,
+        )
+        .await
+        .unwrap();
+    let repo = store
+        .reserve_repository(&user, "project", "refs/heads/main", NOW)
+        .await
+        .unwrap();
+    store
+        .finish_repository_creation(&user.tenant_id, &repo.id, NOW)
+        .await
+        .unwrap();
+    let copy = store
+        .start_compaction(&user.tenant_id, &repo.id, Some(&user), None, NOW)
+        .await
+        .unwrap();
+    store
+        .mint_copy_token(&copy.new_backend_id(), TokenHash([2; 32]), NOW)
+        .await
+        .unwrap();
+
+    let mut connection =
+        SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&path))
+            .await
+            .unwrap();
+    let counts =
+        "SELECT (SELECT count(*) FROM idempotency), (SELECT count(*) FROM internal_tokens)";
+    sqlx::query("CREATE TRIGGER interrupt_cleanup BEFORE DELETE ON internal_tokens BEGIN SELECT RAISE(ABORT, 'injected storage failure'); END")
+        .execute(&mut connection).await.unwrap();
+    let deadline = NOW + 86_400_000;
+    assert!(
+        store
+            .deployment_purge_expired_responses(deadline)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        sqlx::query_as::<_, (i64, i64)>(counts)
+            .fetch_one(&mut connection)
+            .await
+            .unwrap(),
+        (1, 1)
+    );
+    sqlx::query("DROP TRIGGER interrupt_cleanup")
+        .execute(&mut connection)
+        .await
+        .unwrap();
+    store
+        .deployment_purge_expired_responses(deadline)
+        .await
+        .unwrap();
+    assert_eq!(
+        sqlx::query_as::<_, (i64, i64)>(counts)
+            .fetch_one(&mut connection)
+            .await
+            .unwrap(),
+        (0, 0)
     );
 }
