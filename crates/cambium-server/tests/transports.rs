@@ -1077,13 +1077,19 @@ async fn check_provenance_log(
         reply.json::<Value>().await.unwrap()["provenance_recorded"],
         false
     );
-    let log = std::fs::read_to_string(diagnostics).unwrap();
     let expected =
         format!("provenance record failed request_id={id} error=metadata storage failed");
-    assert!(
-        log.lines().any(|line| line == expected),
-        "missing safe diagnostic for {id}"
-    );
+    let log = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let log = std::fs::read_to_string(diagnostics).unwrap();
+            if log.lines().any(|line| line == expected) {
+                break log;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("missing safe diagnostic for the failed provenance record");
     for private in [
         token,
         "private-store-detail",
