@@ -135,10 +135,11 @@ that allocates fresh repository IDs under a prefix no one else uses:
 [`git_edge::run`](../crates/cambium-backend-conformance/src/git_edge.rs)
 checks the stock-Git half of section 5 and the policy decisions in section 7.
 Supply an empty repository, its authorized Git URL, an empty local directory,
-and policy controls that can deny access and disconnect the listener while Git
-stays up. The fixture policy hides `refs/heads/hidden` and refuses updates to
+a reader that lists and reads files from the pushed commit through Cambium,
+and policy controls that can grant read-only access, deny access, and disconnect
+the listener while Git stays up. The fixture policy hides `refs/heads/hidden` and refuses updates to
 `refs/heads/refused`. The suite pushes the full corpus, verifies raw tree and
-blob contents, checks advertised refs, and checks denial of reads and writes
+blob contents, checks both fetch and push advertisements, and checks denial of reads and writes
 with the policy online and offline. In-memory adapter mutations exercise each
 policy assertion. Enroute runs this suite through its real signed hooks in the
 server transport tests:

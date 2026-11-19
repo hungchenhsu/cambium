@@ -1,26 +1,25 @@
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use cambium_backend::{
     Backend as _, BackendRepositoryId,
-    git_policy::{GitCommand, GitDenial, GitGrant, GitPolicy, GitRequest},
+    git_policy::{GitCommand, GitDenial, GitGrant, GitOperation, GitPolicy, GitRequest},
 };
-use cambium_backend_conformance::git_edge::{PolicyControl, run};
+use cambium_backend_conformance::git_edge::{Access, PolicyControl, run};
 use cambium_backend_enroute::{hooks::HookAdapter, signature::SigningKey};
 use cambium_server::transport::hook_router;
 
 struct FixturePolicy {
     repository: BackendRepositoryId,
-    denied: AtomicBool,
+    access: Mutex<Access>,
 }
 
 #[async_trait]
 impl GitPolicy for FixturePolicy {
     async fn authorize(&self, request: &GitRequest) -> Result<GitGrant, GitDenial> {
-        if self.denied.load(Ordering::SeqCst)
+        let access = *self.access.lock().unwrap();
+        if access == Access::Denied
+            || (access == Access::ReadOnly && request.operation == GitOperation::Write)
             || request.path.trim_start_matches('/') != "suite/project.git"
         {
             return Err(GitDenial::NotFound);
@@ -75,18 +74,36 @@ impl GitPolicy for FixturePolicy {
 
 struct Wiring {
     policy: Arc<FixturePolicy>,
+    git: String,
     listener: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 impl PolicyControl for Wiring {
-    fn deny_access(&self, deny: bool) {
-        self.policy.denied.store(deny, Ordering::SeqCst);
+    fn set_access(&self, access: Access) {
+        *self.policy.access.lock().unwrap() = access;
     }
 
     async fn disconnect(&self) {
         let listener = self.listener.lock().unwrap().take().unwrap();
         listener.abort();
         assert!(listener.await.unwrap_err().is_cancelled());
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        for service in ["git-upload-pack", "git-receive-pack"] {
+            let response = client
+                .get(format!("{}/info/refs", self.git))
+                .query(&[("service", service)])
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), 500);
+            assert!(
+                response
+                    .text()
+                    .await
+                    .unwrap()
+                    .contains("authorization failed")
+            );
+        }
     }
 }
 
@@ -107,7 +124,7 @@ async fn enroute_serves_the_stock_git_edge_contract() {
         .unwrap();
     let policy = Arc::new(FixturePolicy {
         repository: repository.clone(),
-        denied: AtomicBool::new(false),
+        access: Mutex::new(Access::ReadWrite),
     });
     let adapter =
         HookAdapter::new(vec![signing.verifying_key()], &endpoint, policy.clone()).unwrap();
@@ -116,7 +133,9 @@ async fn enroute_serves_the_stock_git_edge_contract() {
             .await
             .unwrap();
     });
+    let git = format!("{}suite/project.git", server.git);
     let wiring = Wiring {
+        git: git.clone(),
         policy,
         listener: Mutex::new(Some(listener)),
     };
@@ -124,9 +143,28 @@ async fn enroute_serves_the_stock_git_edge_contract() {
     run(
         &server.backend,
         &repository,
-        &format!("{}suite/project.git", server.git),
+        &git,
         &wiring,
         directory.path(),
+        async |tip| {
+            let objects = cambium_server::objects::GitObjects {
+                backend: &server.backend,
+                repository: &repository,
+            };
+            let mut result = Vec::new();
+            for entry in objects
+                .tree(tip, true)
+                .await
+                .unwrap()
+                .into_iter()
+                .filter(|entry| !entry.is_tree())
+            {
+                let (read, contents) = objects.file(tip, &entry.path).await.unwrap();
+                assert_eq!(entry, read);
+                result.push((entry.path, entry.mode, contents));
+            }
+            result
+        },
     )
     .await;
 }

@@ -5,7 +5,7 @@ use std::{
     process::{Command, Output, Stdio},
 };
 
-use crate::{paths::PATH_CORPUS, suite::files};
+use crate::paths::PATH_CORPUS;
 use cambium_backend::{Backend, BackendRepositoryId, RefExpectation, RefUpdate};
 use cambium_protocol::ObjectId;
 
@@ -81,12 +81,21 @@ pub fn init_corpus(directory: &Path) -> String {
     commit
 }
 
+/// Access decisions for the disposable repository.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Access {
+    ReadWrite,
+    ReadOnly,
+    Denied,
+}
+
 /// An adapter configures policy on a disposable endpoint and implements these
 /// two transitions. Initially the policy grants access, hides refs/heads/hidden
 /// and refuses updates to refs/heads/refused. The endpoint must keep serving Git
 /// after its policy listener has stopped.
 pub trait PolicyControl {
-    fn deny_access(&self, deny: bool);
+    fn set_access(&self, access: Access);
+    /// Stop the policy listener and verify the Git service still answers requests.
     fn disconnect(&self) -> impl Future<Output = ()> + Send;
 }
 
@@ -98,14 +107,10 @@ pub async fn run(
     endpoint: &str,
     policy: &impl PolicyControl,
     directory: &Path,
+    read_files: impl AsyncFn(&ObjectId) -> Vec<(Vec<u8>, u32, Vec<u8>)>,
 ) {
     let commit = init_corpus(directory);
     git(directory, &["push", endpoint, "refs/heads/main"], b"");
-    let tree = text(git(
-        directory,
-        &["rev-parse", "refs/heads/main^{tree}"],
-        b"",
-    ));
     let tip: ObjectId = commit.parse().unwrap();
     let refs = backend.list_refs(repository, &[]).await.unwrap().refs;
     assert!(
@@ -119,9 +124,10 @@ pub async fn run(
         .map(|f| (f.path.to_vec(), f.mode, f.contents.to_vec()))
         .collect();
     expected.sort();
+    let mut returned = read_files(&tip).await;
+    returned.sort();
     assert_eq!(
-        files(backend, repository, &tree.parse().unwrap()).await,
-        expected,
+        returned, expected,
         "stock Git corpus paths, modes and contents"
     );
 
@@ -136,25 +142,50 @@ pub async fn run(
         matches!(&setup[..], [outcome] if outcome.rejection.is_none()),
         "seed the hidden ref"
     );
-    let refs_before = backend.list_refs(repository, &[]).await.unwrap();
+    let snapshot = async || {
+        let mut snapshot = backend.list_refs(repository, &[]).await.unwrap();
+        snapshot.refs.sort_by(|a, b| a.name.cmp(&b.name));
+        snapshot
+    };
+    let refs_before = snapshot().await;
+    // A dry-run mirror reports every advertised destination-only ref as a deletion.
+    let mirror = git(
+        directory,
+        &["push", "--dry-run", "--porcelain", "--mirror", endpoint],
+        b"",
+    );
+    let mirror = text(mirror);
+    let rows: Vec<_> = mirror.lines().filter(|line| line.contains('\t')).collect();
+    assert_eq!(
+        rows,
+        ["=\trefs/heads/main:refs/heads/main\t[up to date]"],
+        "receive-pack advertised refs"
+    );
+
     let advertise = || {
         let out = invoke(directory, &["ls-remote", "--refs", endpoint], b"");
         out.status.success().then(|| text(out.stdout))
     };
     let push = |destination: &str| {
-        invoke(
+        let result = invoke(
             directory,
             &["push", endpoint, &format!("refs/heads/main:{destination}")],
             b"",
-        )
-        .status
-        .success()
+        );
+        if destination == "refs/heads/refused" && !result.status.success() {
+            assert!(
+                String::from_utf8_lossy(&result.stderr).contains("ref_forbidden"),
+                "expected fixture refusal: {}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+        }
+        result.status.success()
     };
     check_policy(policy, &commit, advertise, push)
         .await
         .expect("git edge contract");
     assert_eq!(
-        backend.list_refs(repository, &[]).await.unwrap(),
+        snapshot().await,
         refs_before,
         "rejected pushes changed refs"
     );
@@ -173,14 +204,21 @@ async fn check_policy(
     if push("refs/heads/refused") {
         return Err("refused update succeeded");
     }
-    policy.deny_access(true);
+    policy.set_access(Access::ReadOnly);
+    if advertise().as_ref() != Some(&expected) {
+        return Err("read-only policy denied read");
+    }
+    if push("refs/heads/read-only") {
+        return Err("read-only policy allowed write");
+    }
+    policy.set_access(Access::Denied);
     if advertise().is_some() {
         return Err("denied read succeeded");
     }
     if push("refs/heads/denied") {
         return Err("denied write succeeded");
     }
-    policy.deny_access(false);
+    policy.set_access(Access::ReadWrite);
     if advertise().as_ref() != Some(&expected) {
         return Err("restoring policy did not restore access");
     }
@@ -207,6 +245,8 @@ mod tests {
         HideMain,
         ShowHidden,
         AcceptRefused,
+        ReadOnlyRead,
+        ReadOnlyWrite,
         DeniedRead,
         DeniedWrite,
         StayDenied,
@@ -220,8 +260,13 @@ mod tests {
     }
 
     impl PolicyControl for Model {
-        fn deny_access(&self, deny: bool) {
-            self.state.store(if deny { 1 } else { 2 }, Ordering::SeqCst);
+        fn set_access(&self, access: Access) {
+            let state = match access {
+                Access::Denied => 1,
+                Access::ReadWrite => 2,
+                Access::ReadOnly => 4,
+            };
+            self.state.store(state, Ordering::SeqCst);
         }
         async fn disconnect(&self) {
             self.state.store(3, Ordering::SeqCst);
@@ -235,8 +280,8 @@ mod tests {
                 (0, Fault::ShowHidden) => {
                     Some("tip\trefs/heads/main\ntip\trefs/heads/hidden".into())
                 }
-                (2, Fault::StayDenied) => None,
-                (0 | 2, _) | (1, Fault::DeniedRead) | (3, Fault::OfflineRead) => {
+                (2, Fault::StayDenied) | (4, Fault::ReadOnlyRead) => None,
+                (0 | 2 | 4, _) | (1, Fault::DeniedRead) | (3, Fault::OfflineRead) => {
                     Some("tip\trefs/heads/main".into())
                 }
                 _ => None,
@@ -245,7 +290,8 @@ mod tests {
         fn push(&self, name: &str) -> bool {
             matches!(
                 (self.state.load(Ordering::SeqCst), self.fault, name),
-                (0, Fault::AcceptRefused, "refs/heads/refused")
+                (4, Fault::ReadOnlyWrite, "refs/heads/read-only")
+                    | (0, Fault::AcceptRefused, "refs/heads/refused")
                     | (1, Fault::DeniedWrite, "refs/heads/denied")
                     | (3, Fault::OfflineWrite, "refs/heads/offline")
             )
@@ -259,6 +305,8 @@ mod tests {
             (Fault::HideMain, Err("advertise exactly the visible ref")),
             (Fault::ShowHidden, Err("advertise exactly the visible ref")),
             (Fault::AcceptRefused, Err("refused update succeeded")),
+            (Fault::ReadOnlyRead, Err("read-only policy denied read")),
+            (Fault::ReadOnlyWrite, Err("read-only policy allowed write")),
             (Fault::DeniedRead, Err("denied read succeeded")),
             (Fault::DeniedWrite, Err("denied write succeeded")),
             (

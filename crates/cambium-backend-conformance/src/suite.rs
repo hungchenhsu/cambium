@@ -419,7 +419,7 @@ async fn verified(
 }
 
 /// Lists every file under a tree as (path, mode, contents), recursively.
-pub(crate) async fn files(
+async fn files(
     backend: &dyn Backend,
     id: &BackendRepositoryId,
     tree: &ObjectId,
