@@ -2,7 +2,8 @@
 
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, Weak},
+    io::Write as _,
+    sync::{Arc, LazyLock, Mutex, Weak, mpsc},
 };
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -43,6 +44,28 @@ impl Clock for SystemClock {
 
 type RepositoryLocks = HashMap<(TenantId, RepositoryId), Weak<AsyncMutex<()>>>;
 
+// A stalled collector must not hold up a commit that has already landed.
+static PROVENANCE_LOG: LazyLock<Option<mpsc::SyncSender<String>>> = LazyLock::new(|| {
+    let (sender, receiver) = mpsc::sync_channel::<String>(64);
+    std::thread::Builder::new()
+        .name("provenance-log".into())
+        .spawn(move || {
+            for line in receiver {
+                let _ = writeln!(std::io::stderr().lock(), "{line}");
+            }
+        })
+        .ok()
+        .map(|_| sender)
+});
+
+fn log_provenance_error(sender: &mpsc::SyncSender<String>, id: &RequestId, error: StoreError) {
+    // Display only includes the public classification. Drop the observation if
+    // the bounded queue is full or its worker is unavailable.
+    let _ = sender.try_send(format!(
+        "provenance record failed request_id={id} error={error}"
+    ));
+}
+
 pub struct App {
     pub store: Arc<dyn CompactionStore>,
     pub backend: Arc<dyn Backend>,
@@ -78,6 +101,7 @@ pub(crate) struct Reservation<'a> {
     principal: &'a Principal,
     key: &'a OperationKey,
     run_id: &'a RequestId,
+    request_id: &'a RequestId,
     pub(crate) saved: Option<Value>,
 }
 
@@ -262,6 +286,7 @@ impl App {
                         principal: &principal,
                         key: &key,
                         run_id: &run_id,
+                        request_id: &request_id,
                         saved: reservation,
                     };
                     let outcome = self
@@ -911,7 +936,12 @@ impl App {
                 self.clock.now_ms(),
             )
             .await
-            .unwrap_or(false);
+            .unwrap_or_else(|error| {
+                if let Some(sender) = PROVENANCE_LOG.as_ref() {
+                    log_provenance_error(sender, reservation.request_id, error);
+                }
+                false
+            });
         let mut response = json!({"commit_id": result.commit_id, "tree_id": result.tree_id, "provenance_recorded": recorded});
         if let Some(parent) = result.parent_commit_id {
             response["parent_commit_id"] = json!(parent);
@@ -1314,4 +1344,24 @@ pub fn internal() -> ApiError {
 }
 pub fn not_found() -> ApiError {
     ApiError::new(ErrorCode::NotFound)
+}
+
+#[cfg(test)]
+mod provenance_log_tests {
+    use super::*;
+
+    #[test]
+    fn a_full_log_queue_does_not_block_a_completed_write() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        sender.send(String::from("previous failure")).unwrap();
+        let (done, completion) = mpsc::channel();
+        let producer = std::thread::spawn(move || {
+            log_provenance_error(&sender, &RequestId::new(), StoreError::Corrupt);
+            done.send(()).unwrap();
+        });
+        let result = completion.recv_timeout(std::time::Duration::from_secs(3));
+        drop(receiver);
+        producer.join().unwrap();
+        result.expect("a stalled log consumer blocked the producer");
+    }
 }
