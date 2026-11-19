@@ -312,6 +312,42 @@ async fn ancestor_revocation_invalidates_descendants_and_stale_principals() {
 }
 
 #[tokio::test]
+async fn revoking_one_delegation_preserves_a_siblings_lifetime() {
+    let (_directory, store) = database().await;
+    let root = bootstrap(&store, "tenant", 1).await;
+    let first = store.mint_token(&root, &mint(&root, 2), NOW).await.unwrap();
+    let sibling = store.mint_token(&root, &mint(&root, 3), NOW).await.unwrap();
+    let deadline = NOW + 10_000;
+    let input = MintToken {
+        expires_at_ms: deadline,
+        ..mint(&sibling, 4)
+    };
+    let child = store.mint_token(&sibling, &input, NOW).await.unwrap();
+    store
+        .revoke_token(&root, &first.token_id, NOW + 1)
+        .await
+        .unwrap();
+
+    assert_code(
+        store
+            .deployment_authenticate(TokenHash([2; 32]), NOW + 1)
+            .await,
+        ErrorCode::Unauthenticated,
+    );
+    let resolved = store
+        .deployment_authenticate(input.token_hash, deadline - 1)
+        .await
+        .unwrap();
+    assert_eq!(resolved.token_id, child.token_id);
+    assert_code(
+        store
+            .deployment_authenticate(input.token_hash, deadline)
+            .await,
+        ErrorCode::Unauthenticated,
+    );
+}
+
+#[tokio::test]
 async fn disabled_ancestor_identity_invalidates_other_identity_descendants() {
     let (_directory, store) = database().await;
     let human = bootstrap(&store, "tenant", 1).await;
