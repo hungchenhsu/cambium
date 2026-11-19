@@ -162,3 +162,76 @@ async fn deployment_rejects_public_permissions_and_symlinked_secrets() {
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
     assert!(Config::load(&path).is_err());
 }
+
+#[test]
+fn host_admin_json_bytes_are_independent_of_process_locale() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("private");
+    cli(&path, &["init"], true);
+    let bootstrap = cli(
+        &path,
+        &[
+            "admin",
+            "bootstrap",
+            "--tenant-slug",
+            "locale",
+            "--human-name",
+            "Operator",
+        ],
+        true,
+    );
+    let tenant = bootstrap["tenant_id"].as_str().unwrap();
+    let token = bootstrap["token_id"].as_str().unwrap();
+    let mut baseline = None;
+    for (lang, messages, all) in [
+        ("C", "", ""),
+        ("zh_TW.UTF-8", "", ""),
+        ("C", "zh-TW", ""),
+        ("zh_TW.UTF-8", "en_US.UTF-8", "ja_JP.UTF-8"),
+    ] {
+        let revoke = |id: &str| {
+            Command::new(env!("CARGO_BIN_EXE_cambium"))
+                .arg("--data-dir")
+                .arg(&path)
+                .args([
+                    "--json",
+                    "admin",
+                    "revoke-token",
+                    "--tenant-id",
+                    tenant,
+                    "--token-id",
+                    id,
+                ])
+                .env("LANG", lang)
+                .env("LC_MESSAGES", messages)
+                .env("LC_ALL", all)
+                .output()
+                .unwrap()
+        };
+        let ok = revoke(token);
+        assert_eq!(ok.status.code(), Some(0));
+        assert!(ok.stderr.is_empty());
+        assert_eq!(
+            serde_json::from_slice::<Value>(&ok.stdout).unwrap(),
+            serde_json::json!({"token_id": token, "revoked": true})
+        );
+        let missing = revoke("tok_00000000000000000000000000");
+        assert_eq!(missing.status.code(), Some(1));
+        assert!(missing.stdout.is_empty());
+        let error = String::from_utf8(missing.stderr).unwrap();
+        let body: Value = serde_json::from_str(&error).unwrap();
+        assert_eq!(body["error"]["code"], "not_found");
+        let id: cambium_protocol::RequestId =
+            serde_json::from_value(body["error"]["request_id"].clone()).unwrap();
+        assert_eq!(error.matches(id.as_str()).count(), 1);
+        let bytes = (ok.stdout, error.replacen(id.as_str(), "<request-id>", 1));
+        if let Some(expected) = &baseline {
+            assert_eq!(
+                &bytes, expected,
+                "LANG={lang} LC_MESSAGES={messages} LC_ALL={all}"
+            );
+        } else {
+            baseline = Some(bytes);
+        }
+    }
+}
