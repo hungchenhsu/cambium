@@ -10,7 +10,7 @@ checks finish.
 
 ## Native archives
 
-From the checkout to package, use the [development prerequisites](development.md)
+From a checkout with clean packaging inputs, use the [development prerequisites](development.md)
 and Python 3.11.4 or later. Run:
 
 ```sh
@@ -20,7 +20,8 @@ python3 scripts/package_self_host.py target/packages
 The script builds the locked `cambium` server and `cambium-cli` client in release
 mode. It prepares or verifies the pinned, patched Enroute checkout and builds
 it with its own toolchain. The archive name contains the Cambium revision and
-Rust host triple. Its top-level directory includes:
+Rust host triple. The script checks the inputs and revision again before
+installing the verified archive. Its top-level directory includes:
 
 - `bin/cambium`, `bin/cambium-cli` and `bin/enroute`.
 - The two Cambium licenses, the Enroute license and NOTICE, and the backend

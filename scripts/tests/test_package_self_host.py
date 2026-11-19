@@ -1,6 +1,8 @@
 """Catch incomplete native self-host bundles before they become artifacts."""
 
+import os
 import shutil
+import subprocess
 import tempfile
 import tomllib
 import unittest
@@ -28,7 +30,7 @@ class BundleTests(unittest.TestCase):
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(packaging.ROOT / name, path)
-            packaging.verify_bundle(root)
+            packaging.verify_bundle(Path(os.path.relpath(root)))
             notice = root / "vendor/enroute/NOTICE"
             notice.write_bytes(b"unexpected notice")
             with self.assertRaisesRegex(ValueError, "NOTICE"):
@@ -43,3 +45,22 @@ class BundleTests(unittest.TestCase):
             (root / "bin/enroute").chmod(0o644)
             with self.assertRaises(PermissionError):
                 packaging.verify_bundle(root)
+
+    def test_modified_input_cannot_reuse_a_clean_revision(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            checkout = Path(directory)
+            subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+            config = checkout / "examples/enroute-local.toml"
+            config.parent.mkdir()
+            config.write_text("original")
+            subprocess.run(["git", "add", "examples/enroute-local.toml"],
+                           cwd=checkout, check=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Fixture", "-c",
+                 "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false",
+                 "commit", "-qm", "fixture"], cwd=checkout, check=True,
+            )
+            self.assertEqual(len(packaging.source_revision(checkout)), 40)
+            config.write_text("modified")
+            with self.assertRaisesRegex(ValueError, "modified packaging inputs"):
+                packaging.source_revision(checkout)

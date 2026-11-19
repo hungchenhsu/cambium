@@ -16,8 +16,6 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[1]
 ENROUTE = ROOT / "target" / "enroute"
 BINARIES = ("cambium", "cambium-cli", "enroute")
-
-
 FILES = (
     "LICENSE-APACHE", "LICENSE-AGPL", "vendor/enroute/LICENSE",
     "vendor/enroute/NOTICE", "vendor/enroute/manifest.toml",
@@ -46,6 +44,7 @@ def build(host: str) -> None:
 
 
 def verify_bundle(directory: Path) -> None:
+    directory = directory.resolve()
     workspace = tomllib.loads((ROOT / "Cargo.toml").read_text())
     enroute = tomllib.loads((ROOT / "vendor/enroute/manifest.toml").read_text())
     for name in BINARIES:
@@ -61,13 +60,27 @@ def verify_bundle(directory: Path) -> None:
             raise ValueError(f"Archive member differs from checkout: {name}")
 
 
+def source_revision(checkout: Path) -> str:
+    inputs = [
+        "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", ".cargo", "crates",
+        "vendor/enroute", "scripts/package_self_host.py",
+        "scripts/prepare_enroute.py", *FILES,
+    ]
+    if subprocess.check_output(
+        ["git", "status", "--porcelain", "--untracked-files=all", "--", *inputs],
+        cwd=checkout,
+    ):
+        raise ValueError("Cannot label modified packaging inputs with a commit")
+    return subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=checkout, text=True,
+    ).strip()
+
+
 def package(output: Path) -> Path:
     host = subprocess.check_output(
         ["rustc", "--print", "host-tuple"], cwd=ROOT, text=True,
     ).strip()
-    revision = subprocess.check_output(
-        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True,
-    ).strip()
+    revision = source_revision(ROOT)
     build(host)
     name = f"cambium-{revision[:12]}-{host}"
     output.mkdir(parents=True, exist_ok=True)
@@ -89,6 +102,8 @@ def package(output: Path) -> Path:
         verify_bundle(staging / name)
         with archive.open("rb") as stream:
             digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        if source_revision(ROOT) != revision:
+            raise ValueError("The checkout revision changed during packaging")
         os.replace(archive, destination)
     print(f"{digest}  {destination.name}")
     return destination
