@@ -358,6 +358,7 @@ dependencies = [
  "time",
  "tokio",
  "toml",
+ "unicase",
  "unicode-normalization",
  "url",
 ]

@@ -44,6 +44,7 @@ gix-validate = "0.13"
 gix-object = { version = "0.66", features = ["sha1"] }
 gix-hash = { version = "0.28", features = ["sha1"] }
 unicode-normalization = "0.1"
+unicase = "2.10"
 chacha20poly1305 = "0.11"
 axum = "0.8"
 schemars = "1"
