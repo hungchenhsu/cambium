@@ -1047,3 +1047,6 @@ async fn binary_uses_private_files_and_preserves_encrypted_replay_across_restart
     );
     git(directory.path(), Some(token), &["ls-remote", &url], false);
 }
+
+#[path = "transports/git_edge.rs"]
+mod git_edge;

@@ -7,7 +7,7 @@ use std::{
 };
 
 use cambium_backend::*;
-use cambium_backend_conformance::paths::PATH_CORPUS;
+use cambium_backend_conformance::git_edge::init_corpus;
 use cambium_protocol::ObjectId;
 use common::Server;
 
@@ -413,26 +413,7 @@ async fn stock_git_corpus_survives_raw_reads_and_backend_copy() {
         .unwrap();
     let local = tempfile::tempdir().unwrap();
     let directory = local.path();
-    git(
-        directory,
-        &["init", "--bare", "--object-format=sha1", "--template="],
-        b"",
-    );
-    let mut index = Vec::new();
-    for fixture in PATH_CORPUS {
-        let object = text(git(
-            directory,
-            &["hash-object", "-w", "--stdin"],
-            fixture.contents,
-        ));
-        index.extend_from_slice(format!("{:o} {object}\t", fixture.mode).as_bytes());
-        index.extend_from_slice(fixture.path);
-        index.push(0);
-    }
-    git(directory, &["update-index", "-z", "--index-info"], &index);
-    let tree = text(git(directory, &["write-tree"], b""));
-    let commit = text(git(directory, &["commit-tree", &tree], b"Path corpus\n"));
-    git(directory, &["update-ref", "refs/heads/main", &commit], b"");
+    let commit = init_corpus(directory);
     git(
         directory,
         &[

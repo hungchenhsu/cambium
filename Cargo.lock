@@ -272,6 +272,7 @@ dependencies = [
  "cambium-protocol",
  "sha1",
  "tempfile",
+ "tokio",
 ]
 
 [[package]]

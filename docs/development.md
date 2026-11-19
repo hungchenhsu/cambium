@@ -132,9 +132,24 @@ that allocates fresh repository IDs under a prefix no one else uses:
 7. when the capability is reported, sealing (ADR-0013) and ref creation receipts
    (ADR-0015).
 
-Two parts of ADR-0007's list need a git endpoint and policy wiring, so each
-adapter covers them in its own tests: the stock-git half of exact paths
-(`backend.rs`) and the git edge (`hooks.rs`, plus the server's transport tests).
+[`git_edge::run`](../crates/cambium-backend-conformance/src/git_edge.rs)
+checks the stock-Git half of section 5 and the policy decisions in section 7.
+Supply an empty repository, its authorized Git URL, an empty local directory,
+a reader that lists and reads files from the pushed commit through Cambium,
+and policy controls that can grant read-only access, deny access, and disconnect
+the listener while Git stays up. The fixture policy hides `refs/heads/hidden` and refuses updates to
+`refs/heads/refused` with `git_edge::REFUSAL_REASON`. The suite pushes the full corpus, verifies raw tree and
+blob contents, checks both fetch and push advertisements, and checks denial of reads and writes
+with the policy online and offline. In-memory adapter mutations exercise each
+policy assertion. Enroute runs this suite through its real signed hooks in the
+server transport tests:
+
+```sh
+ENROUTE_BIN="$PWD/target/enroute/target/debug/enroute" \
+  cargo test --locked -p cambium-server --test transports enroute_serves_the_stock_git_edge_contract -- --ignored
+```
+
+Run the storage interface checks separately:
 
 ```sh
 ENROUTE_BIN="$PWD/target/enroute/target/debug/enroute" \
