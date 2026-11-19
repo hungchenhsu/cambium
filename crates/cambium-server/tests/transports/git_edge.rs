@@ -5,7 +5,7 @@ use cambium_backend::{
     Backend as _, BackendRepositoryId,
     git_policy::{GitCommand, GitDenial, GitGrant, GitOperation, GitPolicy, GitRequest},
 };
-use cambium_backend_conformance::git_edge::{Access, PolicyControl, run};
+use cambium_backend_conformance::git_edge::{Access, PolicyControl, REFUSAL_REASON, run};
 use cambium_backend_enroute::{hooks::HookAdapter, signature::SigningKey};
 use cambium_server::transport::hook_router;
 
@@ -18,11 +18,11 @@ struct FixturePolicy {
 impl GitPolicy for FixturePolicy {
     async fn authorize(&self, request: &GitRequest) -> Result<GitGrant, GitDenial> {
         let access = *self.access.lock().unwrap();
-        if access == Access::Denied
-            || (access == Access::ReadOnly && request.operation == GitOperation::Write)
-            || request.path.trim_start_matches('/') != "suite/project.git"
-        {
+        if access == Access::Denied || request.path.trim_start_matches('/') != "suite/project.git" {
             return Err(GitDenial::NotFound);
+        }
+        if access == Access::ReadOnly && request.operation == GitOperation::Write {
+            return Err(GitDenial::Forbidden);
         }
         Ok(GitGrant {
             repository: self.repository.clone(),
@@ -56,7 +56,7 @@ impl GitPolicy for FixturePolicy {
         assert_eq!(repository, &self.repository);
         Ok(commands
             .iter()
-            .map(|c| (c.name == "refs/heads/refused").then(|| "ref_forbidden".into()))
+            .map(|c| (c.name == "refs/heads/refused").then(|| REFUSAL_REASON.into()))
             .collect())
     }
 
@@ -79,8 +79,20 @@ struct Wiring {
 }
 
 impl PolicyControl for Wiring {
-    fn set_access(&self, access: Access) {
+    async fn set_access(&self, access: Access) {
         *self.policy.access.lock().unwrap() = access;
+        if access == Access::ReadOnly {
+            let response = reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .unwrap()
+                .get(format!("{}/info/refs", self.git))
+                .query(&[("service", "git-receive-pack")])
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), 403, "read-only push discovery");
+        }
     }
 
     async fn disconnect(&self) {

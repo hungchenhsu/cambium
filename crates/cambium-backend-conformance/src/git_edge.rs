@@ -81,6 +81,9 @@ pub fn init_corpus(directory: &Path) -> String {
     commit
 }
 
+/// Fixture rejection text for updates to refs/heads/refused.
+pub const REFUSAL_REASON: &str = "ref_forbidden";
+
 /// Access decisions for the disposable repository.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Access {
@@ -94,7 +97,7 @@ pub enum Access {
 /// and refuses updates to refs/heads/refused. The endpoint must keep serving Git
 /// after its policy listener has stopped.
 pub trait PolicyControl {
-    fn set_access(&self, access: Access);
+    fn set_access(&self, access: Access) -> impl Future<Output = ()> + Send;
     /// Stop the policy listener and verify the Git service still answers requests.
     fn disconnect(&self) -> impl Future<Output = ()> + Send;
 }
@@ -174,14 +177,25 @@ pub async fn run(
         );
         if destination == "refs/heads/refused" && !result.status.success() {
             assert!(
-                String::from_utf8_lossy(&result.stderr).contains("ref_forbidden"),
+                String::from_utf8_lossy(&result.stderr).contains(REFUSAL_REASON),
                 "expected fixture refusal: {}",
                 String::from_utf8_lossy(&result.stderr)
             );
         }
         result.status.success()
     };
-    check_policy(policy, &commit, advertise, push)
+    let fetch = || {
+        let destination = directory.join("read-only-fetch");
+        std::fs::create_dir(&destination).unwrap();
+        git(
+            &destination,
+            &["init", "--bare", "--object-format=sha1", "--template="],
+            b"",
+        );
+        git(&destination, &["fetch", endpoint, "refs/heads/main"], b"");
+        text(git(&destination, &["rev-parse", "FETCH_HEAD"], b""))
+    };
+    check_policy(policy, &commit, advertise, push, fetch)
         .await
         .expect("git edge contract");
     assert_eq!(
@@ -196,6 +210,7 @@ async fn check_policy(
     commit: &str,
     advertise: impl Fn() -> Option<String>,
     push: impl Fn(&str) -> bool,
+    fetch: impl Fn() -> String,
 ) -> Result<(), &'static str> {
     let expected = format!("{commit}\trefs/heads/main");
     if advertise().as_ref() != Some(&expected) {
@@ -204,21 +219,24 @@ async fn check_policy(
     if push("refs/heads/refused") {
         return Err("refused update succeeded");
     }
-    policy.set_access(Access::ReadOnly);
+    policy.set_access(Access::ReadOnly).await;
     if advertise().as_ref() != Some(&expected) {
         return Err("read-only policy denied read");
+    }
+    if fetch() != commit {
+        return Err("read-only fetch did not return the commit");
     }
     if push("refs/heads/read-only") {
         return Err("read-only policy allowed write");
     }
-    policy.set_access(Access::Denied);
+    policy.set_access(Access::Denied).await;
     if advertise().is_some() {
         return Err("denied read succeeded");
     }
     if push("refs/heads/denied") {
         return Err("denied write succeeded");
     }
-    policy.set_access(Access::ReadWrite);
+    policy.set_access(Access::ReadWrite).await;
     if advertise().as_ref() != Some(&expected) {
         return Err("restoring policy did not restore access");
     }
@@ -246,6 +264,7 @@ mod tests {
         ShowHidden,
         AcceptRefused,
         ReadOnlyRead,
+        WrongFetch,
         ReadOnlyWrite,
         DeniedRead,
         DeniedWrite,
@@ -260,7 +279,7 @@ mod tests {
     }
 
     impl PolicyControl for Model {
-        fn set_access(&self, access: Access) {
+        async fn set_access(&self, access: Access) {
             let state = match access {
                 Access::Denied => 1,
                 Access::ReadWrite => 2,
@@ -305,6 +324,10 @@ mod tests {
             (Fault::HideMain, Err("advertise exactly the visible ref")),
             (Fault::ShowHidden, Err("advertise exactly the visible ref")),
             (Fault::AcceptRefused, Err("refused update succeeded")),
+            (
+                Fault::WrongFetch,
+                Err("read-only fetch did not return the commit"),
+            ),
             (Fault::ReadOnlyRead, Err("read-only policy denied read")),
             (Fault::ReadOnlyWrite, Err("read-only policy allowed write")),
             (Fault::DeniedRead, Err("denied read succeeded")),
@@ -321,7 +344,18 @@ mod tests {
                 fault,
             };
             assert_eq!(
-                check_policy(&model, "tip", || model.advertise(), |r| model.push(r)).await,
+                check_policy(
+                    &model,
+                    "tip",
+                    || model.advertise(),
+                    |r| model.push(r),
+                    || if fault == Fault::WrongFetch {
+                        "other".into()
+                    } else {
+                        "tip".into()
+                    }
+                )
+                .await,
                 expected
             );
         }
