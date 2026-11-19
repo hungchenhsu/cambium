@@ -2573,3 +2573,122 @@ async fn forced_compaction_serializes_expiry_with_an_inflight_reconciliation_cop
             .all(|r| !r.name.starts_with("refs/cambium-rescue/"))
     );
 }
+
+#[tokio::test]
+#[ignore = "requires ENROUTE_BIN pointing to the pinned patched backend"]
+async fn expiry_persists_its_decision_when_the_wall_clock_moves_back() {
+    struct RecedingClock(AtomicI64);
+    impl Clock for RecedingClock {
+        fn now_ms(&self) -> i64 {
+            self.0.fetch_sub(1, Ordering::SeqCst)
+        }
+    }
+
+    let server = common::Server::start().await;
+    let directory = tempfile::tempdir().unwrap();
+    let store = Arc::new(
+        SqliteStore::open(
+            directory.path().join("metadata.sqlite"),
+            TokenSettings::default(),
+        )
+        .await
+        .unwrap(),
+    );
+    let app = App::new(
+        store.clone(),
+        Arc::new(server.backend.clone()),
+        Arc::new(TestClock(AtomicI64::new(NOW))),
+        &[12; 32],
+        server.git.clone(),
+    );
+    let token = new_token().unwrap();
+    let principal = store
+        .deployment_bootstrap(
+            &Bootstrap {
+                tenant_slug: "clock".into(),
+                human_name: "Operator".into(),
+                token_hash: token_hash(&token).unwrap(),
+                expires_at_ms: NOW + 86_400_000,
+            },
+            NOW,
+        )
+        .await
+        .unwrap();
+    let mut app = Arc::new(app);
+    let repo = success(call(&app, &token, "create_repository", json!({"name":"project"})).await)["repository_id"].clone();
+    let repository: RepositoryId = serde_json::from_value(repo.clone()).unwrap();
+    let tip = success(call(&app, &token, "write_changeset", json!({
+        "repository_id":repo, "message":"Base", "changes":[{"action":"put","path":"file","contents":"keep"}]
+    })).await)["commit_id"].clone();
+    let branch = success(
+        call(
+            &app,
+            &token,
+            "create_ephemeral_branch",
+            json!({
+                "repository_id":repo, "name":"temporary", "start_commit":tip, "ttl_seconds":1
+            }),
+        )
+        .await,
+    );
+    let branch_id: BranchId = serde_json::from_value(branch["branch_id"].clone()).unwrap();
+    let backend_id = store
+        .get_repository(&principal.tenant_id, &repository)
+        .await
+        .unwrap()
+        .backend_id()
+        .try_into()
+        .unwrap();
+
+    // Step backwards one millisecond per observation, across the deadline.
+    let app = Arc::get_mut(&mut app).unwrap();
+    app.clock = Arc::new(RecedingClock(AtomicI64::new(NOW + 1002)));
+    app.run_lifecycle_once().await.unwrap();
+    let record = store
+        .get_branch(&principal.tenant_id, &repository, &branch_id)
+        .await
+        .unwrap();
+    let refs = server
+        .backend
+        .list_refs(&backend_id, &[])
+        .await
+        .unwrap()
+        .refs;
+    let still_present = refs.iter().any(|item| item.name == "refs/heads/temporary");
+    let pending = store
+        .expiry_summary(&principal.tenant_id, &repository)
+        .await
+        .unwrap()
+        .count;
+    assert!(
+        matches!(
+            (record.state.as_str(), still_present, pending),
+            ("active", true, 0) | ("expired", false, 1)
+        ),
+        "state={}, ref present={still_present}, expiry count={pending}",
+        record.state
+    );
+    assert!(
+        refs.iter().any(|item| item.name == "refs/heads/main"
+            && item.object_id.as_str() == tip.as_str().unwrap())
+    );
+
+    app.clock = Arc::new(TestClock(AtomicI64::new(NOW + 2000)));
+    app.run_lifecycle_once().await.unwrap();
+    assert_eq!(
+        store
+            .get_branch(&principal.tenant_id, &repository, &branch_id)
+            .await
+            .unwrap()
+            .state,
+        "expired"
+    );
+    assert_eq!(
+        store
+            .expiry_summary(&principal.tenant_id, &repository)
+            .await
+            .unwrap()
+            .count,
+        1
+    );
+}

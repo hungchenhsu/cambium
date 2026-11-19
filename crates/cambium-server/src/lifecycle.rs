@@ -320,11 +320,13 @@ impl App {
                     .await
                     .map_err(store_error)?;
             }
-            if record.state == "active" && record.expires_at_ms > self.clock.now_ms() {
+            // Use the same deadline observation for eligibility and the durable transition.
+            let decision_ms = self.clock.now_ms();
+            if record.state == "active" && record.expires_at_ms > decision_ms {
                 continue;
             }
             self.store
-                .begin_branch_expiry(&record.tenant_id, &record.id, self.clock.now_ms())
+                .begin_branch_expiry(&record.tenant_id, &record.id, decision_ms)
                 .await
                 .map_err(store_error)?;
             self.remove_expired_ref(repository, &record.name).await?;
