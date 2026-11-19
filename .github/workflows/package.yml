@@ -1,0 +1,64 @@
+name: Self-host packaging
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/package.yml
+      - scripts/package_self_host.py
+      - scripts/tests/test_package_self_host.py
+      - scripts/prepare_enroute.py
+      - docs/self-host-packaging.md
+      - examples/enroute-local.toml
+      - crates/**
+      - vendor/enroute/**
+      - deploy/**
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - Dockerfile
+      - .dockerignore
+      - LICENSE-APACHE
+      - LICENSE-AGPL
+
+permissions:
+  contents: read
+
+concurrency:
+  group: self-host-packaging-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: Native archive (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build, unpack and run the release binaries
+        run: python3 scripts/package_self_host.py "$RUNNER_TEMP/packages"
+
+  images:
+    name: Local image (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [cambium, enroute]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the runtime target and run its binary
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          docker build --target "$TARGET" --iidfile "$RUNNER_TEMP/image-id" .
+          docker run --rm --network none --entrypoint "/usr/local/bin/$TARGET" \
+            "$(cat "$RUNNER_TEMP/image-id")" --version
