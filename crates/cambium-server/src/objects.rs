@@ -134,7 +134,8 @@ impl GitObjects<'_> {
     ) -> Result<(TreeEntry, Vec<u8>), BackendError> {
         validate_path(path)?;
         let components: Vec<_> = path.split(|byte| *byte == b'/').collect();
-        if components.len() > MAX_DEPTH {
+        // The leaf is a file entry in its parent tree. Only directories add depth.
+        if components.len() > MAX_DEPTH + 1 {
             return Err(invalid("path", "Path exceeds the traversal limit"));
         }
         let mut tree = self.root_tree(revision).await?;
