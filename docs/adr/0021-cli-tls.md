@@ -34,7 +34,7 @@ row's feature. Resolve the candidate lock, inspect its CLI graph, then run
 the same checker as CI:
 
 ```sh
-cargo metadata --format-version 1 --all-features > target/tls-metadata.json
+cargo metadata --format-version 1 --all-features > /dev/null
 cargo tree --locked -p cambium-cli --target all -e features
 python3 scripts/check_licenses.py
 ```
