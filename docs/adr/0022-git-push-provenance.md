@@ -33,7 +33,7 @@ uses user notifications for best-effort branch activity.
 ## Decision
 
 Recommend the second option for optional, read-only history. Present a row as
-“identity X pushed this ref from A to B.” Keep the existing commit-provenance
+“identity X pushed this ref from A to B in generation G.” Keep the existing commit-provenance
 lookup scoped to API writes. Pushing a ref creates no human approval, model
 claim, session claim or attestation about the author of any reachable commit.
 
@@ -43,7 +43,8 @@ claim, session claim or attestation about the author of any reachable commit.
   authorization, pre-receive revalidation and signed hook checks.
 - On a verified landed notification, match the backend repository and echoed
   user context to the original grant. Record one row per reported command,
-  with the push-attempt ID, command position, exact ref name, optional old/new
+  with the stable generation and backend incarnation, push-attempt ID, command
+  position, exact ref name, optional old/new
   IDs, reported force flag, and observation time. The timestamp describes
   Cambium's observation and does not assert a backend commit time. Creates
   have no old ID and deletes have no new ID. Internal copies and refused
@@ -61,12 +62,20 @@ claim, session claim or attestation about the author of any reachable commit.
   write. The existing branch-activity path retains its live-token checks.
 - Keep observed rows in Cambium's metadata store with the logical repository,
   including across generation switches. Drop late notifications for a deleted
-  repository. Repository deletion removes its rows. Retain no credentials,
-  raw hook bodies, commit messages, names, emails or transcripts. A future
+  repository. Repository deletion removes its rows. Exact ref names are
+  user-supplied and can themselves contain names or email addresses. They
+  remain in history after ref deletion. Collect no separate personal name or
+  email fields, credentials, raw hook bodies, commit messages or transcripts. A future
   paginated history operation must authorize current `repo:read` for the
   specific tenant and repository before returning rows.
 
 ## Consequences
+
+A push admitted before a generation switch can land in the draining generation
+while the active ref has already moved independently. Preserve that original
+generation in reads, even if reconciliation later creates a rescue ref.
+[Generation reconciliation](0017-durable-reconciliation-progress.md) ·
+[Rescue refs](0016-multiple-rescue-values.md)
 
 A push that succeeds while the notification or metadata store is unavailable
 can leave a gap. Do not fail a landed Git push, infer the missing pusher from
