@@ -728,3 +728,44 @@ fn map_status(status: Status) -> BackendError {
         _ => BackendError::Internal,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transient_and_sealed_statuses_remain_distinguishable() {
+        let diagnostic = "fixture storage diagnostic";
+        assert!(matches!(
+            map_status(Status::aborted(diagnostic)),
+            BackendError::Contention
+        ));
+        for code in [Code::Unavailable, Code::DeadlineExceeded, Code::Cancelled] {
+            assert!(
+                matches!(
+                    map_status(Status::new(code, diagnostic)),
+                    BackendError::Unavailable
+                ),
+                "{code:?}"
+            );
+        }
+        assert!(matches!(
+            map_status(Status::failed_precondition("repository sealed")),
+            BackendError::RepositorySealed
+        ));
+        assert!(matches!(
+            map_status(Status::failed_precondition(diagnostic)),
+            BackendError::Internal
+        ));
+    }
+
+    #[test]
+    fn invalid_arguments_return_only_the_safe_backend_diagnostic() {
+        let error = map_status(Status::invalid_argument("fixture storage diagnostic"));
+        let BackendError::InvalidRequest { field, reason } = error else {
+            panic!("expected an invalid request");
+        };
+        assert_eq!(field, "request");
+        assert_eq!(reason, "Invalid backend request");
+    }
+}
